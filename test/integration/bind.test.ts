@@ -106,8 +106,9 @@ test("bind URL: clones, writes binding, runs sync", async () => {
     assert.equal(code, 0);
     const b = readBinding(t.ctx.homeDir);
     assert.equal(b?.dotfilesRepo, df.dir);
-    // Empty manifest → sync runs but finds nothing to do, no exec calls.
-    assert.equal(t.runner.calls.length, 0);
+    // Empty manifest → sync pulls dotfiles but finds nothing else to do.
+    assert.equal(t.runner.calls.length, 1);
+    assert.equal(t.runner.calls[0].command, "git pull --ff-only");
     assert.ok(t.log.captured.some((l) => l.includes("Bound to")));
   } finally {
     t.cleanup();
