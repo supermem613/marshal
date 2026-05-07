@@ -1,0 +1,24 @@
+# Audit manifest for marshal — see https://github.com/.../audit-repo for the format.
+# Source of truth: the commander commands registered in src/cli.ts.
+# Every command name must appear in docs/commands.md's command table.
+
+name: marshal
+
+source_of_truth:
+  file: src/cli.ts
+  extractor: regex
+  # Match `program.command("name ...")` — captures the bare command verb.
+  pattern: 'program\s*\n?\s*\.command\(\s*"([a-z][a-z0-9-]*)'
+  sort: alphabetical
+  # No exceptions — every command is equal-tier; alphabetical is the lingua franca.
+
+targets:
+  - file: docs/commands.md
+    section: { heading: "📋 Commands" }
+    match: table_row
+
+stale_terms:
+  - term: bootstrap
+    reason: "Approach G collapsed `bootstrap` into `bind`. The verb should not appear as a command name anywhere."
+    allow_in:
+      - .audit-repo.yaml     # this file documents the rationale
