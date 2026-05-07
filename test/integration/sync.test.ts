@@ -33,7 +33,10 @@ test("sync: empty manifest → no-op success", async () => {
   try {
     const code = await syncCommand(t.ctx, { yes: true });
     assert.equal(code, 0);
-    assert.equal(t.runner.calls.length, 0);
+    // Only the dotfiles pull, no repo work.
+    assert.equal(t.runner.calls.length, 1);
+    assert.equal(t.runner.calls[0].command, "git pull --ff-only");
+    assert.equal(t.runner.calls[0].opts.cwd, df.dir);
   } finally {
     t.cleanup();
     df.cleanup();
@@ -52,11 +55,13 @@ test("sync: clones missing repo and runs install_cmd", async () => {
   try {
     const code = await syncCommand(t.ctx, { yes: true });
     assert.equal(code, 0);
-    assert.equal(t.runner.calls.length, 2);
-    assert.match(t.runner.calls[0].command, /^git clone https:\/\/x\/tool-alpha\.git/);
-    assert.equal(t.runner.calls[1].command, "npm install");
+    assert.equal(t.runner.calls.length, 3);
+    assert.equal(t.runner.calls[0].command, "git pull --ff-only");
+    assert.equal(t.runner.calls[0].opts.cwd, df.dir);
+    assert.match(t.runner.calls[1].command, /^git clone https:\/\/x\/tool-alpha\.git/);
+    assert.equal(t.runner.calls[2].command, "npm install");
     // install_cmd runs in the cloned repo's targetDir.
-    assert.equal(t.runner.calls[1].opts.cwd, join(t.homeDir, "repos", "tool-alpha"));
+    assert.equal(t.runner.calls[2].opts.cwd, join(t.homeDir, "repos", "tool-alpha"));
   } finally {
     t.cleanup();
     df.cleanup();
@@ -78,8 +83,9 @@ test("sync: existing repo with update_cmd → runs update_cmd only", async () =>
   try {
     const code = await syncCommand(t.ctx, { yes: true });
     assert.equal(code, 0);
-    assert.equal(t.runner.calls.length, 1);
-    assert.equal(t.runner.calls[0].command, "tool-alpha update");
+    assert.equal(t.runner.calls.length, 2);
+    assert.equal(t.runner.calls[0].command, "git pull --ff-only");
+    assert.equal(t.runner.calls[1].command, "tool-alpha update");
   } finally {
     t.cleanup();
     df.cleanup();
@@ -98,7 +104,7 @@ test("sync: existing repo without update_cmd → git pull + install_cmd", async 
     assert.equal(code, 0);
     assert.deepEqual(
       t.runner.calls.map((c) => c.command),
-      ["git pull --ff-only", "build.ps1"],
+      ["git pull --ff-only", "git pull --ff-only", "build.ps1"],
     );
   } finally {
     t.cleanup();
@@ -117,7 +123,7 @@ test("sync: existing repo without update_cmd skips install_cmd when git pull is 
   try {
     const code = await syncCommand(t.ctx, { yes: true });
     assert.equal(code, 0);
-    assert.deepEqual(t.runner.calls.map((c) => c.command), ["git pull --ff-only"]);
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["git pull --ff-only", "git pull --ff-only"]);
   } finally {
     t.cleanup();
     df.cleanup();
@@ -163,7 +169,9 @@ test("sync: confirmation declined aborts before exec", async () => {
   try {
     const code = await syncCommand(t.ctx, {});
     assert.equal(code, 0);
-    assert.equal(t.runner.calls.length, 0);
+    // Dotfiles pull still runs (before plan), but no repo work after decline.
+    assert.equal(t.runner.calls.length, 1);
+    assert.equal(t.runner.calls[0].command, "git pull --ff-only");
     assert.ok(t.log.captured.some((l) => l.includes("Aborted")));
   } finally {
     t.cleanup();
@@ -221,8 +229,9 @@ test("sync: app stage is skipped on non-win32 with a recorded failure entry", as
   try {
     const code = await syncCommand(t.ctx, { yes: true });
     assert.equal(code, 1);
-    // No real winget call attempted on darwin — the result is recorded as a failure.
-    assert.equal(t.runner.calls.length, 0);
+    // Dotfiles pull + no real winget call attempted on darwin — the result is recorded as a failure.
+    assert.equal(t.runner.calls.length, 1);
+    assert.equal(t.runner.calls[0].command, "git pull --ff-only");
     assert.ok(t.log.captured.some((l) => l.toLowerCase().includes("win32")));
   } finally {
     t.cleanup();
@@ -247,9 +256,10 @@ test("sync: winget install runs on win32 and treats already-installed as success
   try {
     const code = await syncCommand(t.ctx, { yes: true });
     assert.equal(code, 0);
-    assert.equal(t.runner.calls.length, 2);
-    assert.match(t.runner.calls[0].command, /winget list --exact --id Git\.Git/);
-    assert.match(t.runner.calls[1].command, /winget install --exact --id Git\.Git/);
+    assert.equal(t.runner.calls.length, 3);
+    assert.equal(t.runner.calls[0].command, "git pull --ff-only");
+    assert.match(t.runner.calls[1].command, /winget list --exact --id Git\.Git/);
+    assert.match(t.runner.calls[2].command, /winget install --exact --id Git\.Git/);
   } finally {
     t.cleanup();
     df.cleanup();
@@ -269,7 +279,7 @@ test("sync: winget skips install when package is already installed", async () =>
   try {
     const code = await syncCommand(t.ctx, { yes: true });
     assert.equal(code, 0);
-    assert.deepEqual(t.runner.calls.map((c) => c.command), ["winget list --exact --id Git.Git"]);
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["git pull --ff-only", "winget list --exact --id Git.Git"]);
   } finally {
     t.cleanup();
     df.cleanup();
@@ -289,10 +299,10 @@ test("sync: full sync runs post-repo hook interactively", async () => {
   try {
     const code = await syncCommand(t.ctx, { yes: true });
     assert.equal(code, 0);
-    assert.deepEqual(t.runner.calls.map((c) => c.command), ["tool-sync update", "configsync sync"]);
-    assert.equal(t.runner.calls[1].opts.cwd, df.dir);
-    assert.equal(t.runner.calls[1].opts.inherit, true);
-    assert.equal(t.runner.calls[1].opts.interactive, true);
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["git pull --ff-only", "tool-sync update", "configsync sync"]);
+    assert.equal(t.runner.calls[2].opts.cwd, df.dir);
+    assert.equal(t.runner.calls[2].opts.inherit, true);
+    assert.equal(t.runner.calls[2].opts.interactive, true);
   } finally {
     t.cleanup();
     df.cleanup();
@@ -310,7 +320,7 @@ test("sync: targeted repo sync skips hooks unless explicitly requested", async (
   try {
     const code = await syncCommand(t.ctx, { yes: true, repos: ["tool-sync"] });
     assert.equal(code, 0);
-    assert.deepEqual(t.runner.calls.map((c) => c.command), ["tool-sync update"]);
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["git pull --ff-only", "tool-sync update"]);
   } finally {
     t.cleanup();
     df.cleanup();
@@ -329,7 +339,7 @@ test("sync: targeted repo sync can opt into hooks", async () => {
   try {
     const code = await syncCommand(t.ctx, { yes: true, repos: ["tool-sync"], hooks: true });
     assert.equal(code, 0);
-    assert.deepEqual(t.runner.calls.map((c) => c.command), ["tool-sync update", "configsync sync"]);
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["git pull --ff-only", "tool-sync update", "configsync sync"]);
   } finally {
     t.cleanup();
     df.cleanup();
@@ -348,7 +358,7 @@ test("sync: repo failure skips hooks", async () => {
   try {
     const code = await syncCommand(t.ctx, { yes: true });
     assert.equal(code, 1);
-    assert.deepEqual(t.runner.calls.map((c) => c.command), ["tool-sync update"]);
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["git pull --ff-only", "tool-sync update"]);
     assert.ok(t.log.captured.some((l) => l.includes("skipped after earlier repo failure")));
   } finally {
     t.cleanup();

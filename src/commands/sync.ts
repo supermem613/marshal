@@ -4,6 +4,7 @@ import { readManifest, ManifestError } from "../manifest.js";
 import { buildPlan, unknownRepoNames } from "../plan.js";
 import { renderPlan, renderResults } from "../render.js";
 import { applyPlan } from "../apply.js";
+import { ProcessError } from "../runners/types.js";
 
 export interface SyncOptions {
   yes?: boolean;
@@ -20,6 +21,18 @@ export async function syncCommand(ctx: MarshalContext, opts: SyncOptions): Promi
   } catch (err) {
     if (err instanceof BindingError) {
       ctx.log.error(err.message);
+      return 1;
+    }
+    throw err;
+  }
+
+  // Pull latest dotfiles before reading manifest.
+  ctx.log.info(`→ (${dotfiles}) git pull --ff-only`);
+  try {
+    await ctx.runner.exec("git pull --ff-only", { cwd: dotfiles, inherit: false });
+  } catch (err) {
+    if (err instanceof ProcessError) {
+      ctx.log.error(`dotfiles pull failed: ${err.result.stderr || err.result.stdout}`.trim());
       return 1;
     }
     throw err;
