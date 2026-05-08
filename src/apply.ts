@@ -138,19 +138,28 @@ async function provisionRepo(ctx: MarshalContext, repo: RepoStep): Promise<Execu
       ctx.log.info(`→ git clone ${repo.url} ${repo.targetDir}`);
       await ctx.runner.exec(`git clone ${repo.url} "${repo.targetDir}"`, { cwd: ctx.cwd, inherit: false });
       ctx.log.info(`→ (${repo.installCwd}) ${repo.installCmd}`);
-      await ctx.runner.exec(repo.installCmd, { cwd: repo.installCwd, inherit: false });
+      await ctx.runner.exec(repo.installCmd as string, { cwd: repo.installCwd, inherit: false });
       return { step: `repo: ${repo.name}`, ok: true, detail: "cloned + installed" };
+    }
+    if (repo.action === "clone") {
+      mkdirSync(dirname(repo.targetDir), { recursive: true });
+      ctx.log.info(`→ git clone ${repo.url} ${repo.targetDir}`);
+      await ctx.runner.exec(`git clone ${repo.url} "${repo.targetDir}"`, { cwd: ctx.cwd, inherit: false });
+      return { step: `repo: ${repo.name}`, ok: true, detail: "cloned" };
     }
     if (repo.action === "update") {
       ctx.log.info(`→ (${repo.installCwd}) ${repo.updateCmd}`);
       await ctx.runner.exec(repo.updateCmd as string, { cwd: repo.installCwd, inherit: false });
       return { step: `repo: ${repo.name}`, ok: true, detail: "updated" };
     }
-    // pull-and-install
+    // pull-and-install or pull
     ctx.log.info(`→ (${repo.targetDir}) git pull --ff-only`);
     const pull = await ctx.runner.exec(`git pull --ff-only`, { cwd: repo.targetDir, inherit: false });
     if (gitPullMadeNoChanges(pull)) {
       return { step: `repo: ${repo.name}`, ok: true, detail: "already up to date" };
+    }
+    if (!repo.installCmd) {
+      return { step: `repo: ${repo.name}`, ok: true, detail: "pulled" };
     }
     ctx.log.info(`→ (${repo.installCwd}) ${repo.installCmd}`);
     await ctx.runner.exec(repo.installCmd, { cwd: repo.installCwd, inherit: false });

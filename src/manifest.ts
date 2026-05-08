@@ -22,7 +22,7 @@ const RepoSchema = z.object({
   url: z.string().min(1, "repo.url required"),
   platforms: z.array(PlatformSchema).optional(),
   install_cwd: z.string().optional(),
-  install_cmd: z.string().min(1, "repo.install_cmd required"),
+  install_cmd: z.string().min(1).optional(),
   update_cmd: z.string().min(1).nullable().optional(),
 });
 

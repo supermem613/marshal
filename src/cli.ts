@@ -112,7 +112,7 @@ program
 program
   .command("add <url> [name]")
   .description("Add a tool repo to the manifest. Run `marshal sync` to apply, or pass --sync.")
-  .option("--install-cmd <cmd>", "Install command (default: 'npm install && npm run build && npm link')")
+  .option("--install-cmd <cmd>", "Install command to run after clone/pull")
   .option("--update-cmd <cmd>", "Update command (default: rerun install_cmd after git pull)")
   .option("--install-cwd <subdir>", "Subdirectory inside the repo where install runs")
   .option("--platforms <list>", "Comma-separated platform list (win32,darwin,linux)", (v) => v.split(",").map((s) => s.trim()))

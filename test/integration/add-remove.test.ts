@@ -20,7 +20,10 @@ test("add: appends repo to manifest without syncing by default", async () => {
     assert.equal(m.repos.length, 1);
     assert.equal(m.repos[0].name, "newtool");
     assert.equal(m.repos[0].url, "https://github.com/me/newtool.git");
-    assert.equal(t.runner.calls.length, 0);
+    assert.equal(t.runner.calls.length, 3);
+    assert.ok(t.runner.calls[0].command.startsWith("git add"));
+    assert.ok(t.runner.calls[1].command.startsWith("git commit"));
+    assert.ok(t.runner.calls[2].command.startsWith("git push"));
     assert.ok(t.log.captured.some((l) => l.includes("marshal sync")));
   } finally {
     t.cleanup();
@@ -103,7 +106,8 @@ test("add-app: appends app to manifest without syncing by default", async () => 
     assert.equal(code, 0);
     const m = JSON.parse(readFileSync(join(df.dir, "marshal.json"), "utf8"));
     assert.deepEqual(m.apps, [{ id: "Git.Git", platforms: ["win32"] }]);
-    assert.equal(t.runner.calls.length, 0);
+    assert.equal(t.runner.calls.length, 3);
+    assert.ok(t.runner.calls[0].command.startsWith("git add"));
   } finally {
     t.cleanup();
     df.cleanup();
@@ -141,7 +145,8 @@ test("add-hook: appends hook to manifest without syncing by default", async () =
       interactive: true,
       platforms: ["win32"],
     }]);
-    assert.equal(t.runner.calls.length, 0);
+    assert.equal(t.runner.calls.length, 3);
+    assert.ok(t.runner.calls[0].command.startsWith("git add"));
   } finally {
     t.cleanup();
     df.cleanup();

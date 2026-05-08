@@ -182,3 +182,47 @@ test("unknownRepoNames: ignores names skipped by platform filter", () => {
   });
   assert.deepEqual(unknownRepoNames(m, "darwin", ["tool-win"]), ["tool-win"]);
 });
+
+test("buildPlan: missing repo without install_cmd → clone action", () => {
+  const home = mkdtempSync(join(tmpdir(), "marshal-plan-"));
+  try {
+    const m = makeManifest({
+      repos: [{ name: "scripts", url: "u" }],
+    });
+    const p = buildPlan(m, { homeDir: home, dotfilesRepo: home, platform: "win32" });
+    assert.equal(p.repos[0].action, "clone");
+    assert.equal(p.repos[0].installCmd, null);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("buildPlan: existing repo without install_cmd or update_cmd → pull action", () => {
+  const home = mkdtempSync(join(tmpdir(), "marshal-plan-"));
+  try {
+    mkdirSync(join(home, "repos", "scripts"), { recursive: true });
+    const m = makeManifest({
+      repos: [{ name: "scripts", url: "u" }],
+    });
+    const p = buildPlan(m, { homeDir: home, dotfilesRepo: home, platform: "win32" });
+    assert.equal(p.repos[0].action, "pull");
+    assert.equal(p.repos[0].installCmd, null);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("buildPlan: existing repo with update_cmd but no install_cmd → update action", () => {
+  const home = mkdtempSync(join(tmpdir(), "marshal-plan-"));
+  try {
+    mkdirSync(join(home, "repos", "scripts"), { recursive: true });
+    const m = makeManifest({
+      repos: [{ name: "scripts", url: "u", update_cmd: "scripts update" }],
+    });
+    const p = buildPlan(m, { homeDir: home, dotfilesRepo: home, platform: "win32" });
+    assert.equal(p.repos[0].action, "update");
+    assert.equal(p.repos[0].installCmd, null);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

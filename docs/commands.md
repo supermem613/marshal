@@ -60,7 +60,7 @@ reports that the repo is already up to date.
 ```pwsh
 marshal add https://github.com/<you>/newtool.git
 marshal sync
-# uses default install_cmd: npm install && npm run build && npm link
+# no install_cmd → clone/pull only
 ```
 
 Until you run `marshal sync`, the new repo shows up as `missing` in `marshal status`.

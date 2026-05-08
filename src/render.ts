@@ -6,8 +6,10 @@ import { Logger } from "./ui/log.js";
 
 const ACTION_LABEL: Record<RepoStep["action"], string> = {
   "clone-and-install": "CLONE + INSTALL",
+  "clone": "CLONE",
   "update": "UPDATE",
   "pull-and-install": "PULL + INSTALL",
+  "pull": "PULL",
 };
 
 export function renderPlan(plan: Plan, log: Logger): void {

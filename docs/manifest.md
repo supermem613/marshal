@@ -39,6 +39,10 @@ Single source of truth for what apps and tools a machine should have.
       "update_cmd": "tool-suite update"
     },
     {
+      "name": "scripts",
+      "url": "https://github.com/me/scripts.git"    // no install_cmd → clone/pull only
+    },
+    {
       "name": "desktop-tool",
       "url": "https://github.com/me/desktop-tool.git",
       "platforms": ["win32"],
@@ -84,8 +88,8 @@ Single source of truth for what apps and tools a machine should have.
 | `url` | ✅ | Clonable URL (any form `git clone` accepts). |
 | `platforms` | | Same as apps. |
 | `install_cwd` | | Subdirectory inside the cloned repo where `install_cmd` and `update_cmd` run. Defaults to the repo root. Use this for monorepos (for example, when the CLI lives under `cli/`). |
-| `install_cmd` | ✅ | Shell command to build/install the tool. Runs on first clone. Convention: `npm install && npm run build && npm link`. |
-| `update_cmd` | | Shell command to refresh an existing install. If present, marshal runs *only* this on subsequent syncs. If absent or `null`, marshal runs `git pull --ff-only` and re-runs `install_cmd`. |
+| `install_cmd` | | Shell command to build/install the tool. Runs on first clone and after pulls. If absent, marshal clones/pulls only — no build step. |
+| `update_cmd` | | Shell command to refresh an existing install. If present, marshal runs *only* this on subsequent syncs. If absent or `null`, marshal runs `git pull --ff-only` and re-runs `install_cmd` (if set). |
 
 **Per-hook entry (`hooks[]`):**
 
@@ -102,11 +106,13 @@ Single source of truth for what apps and tools a machine should have.
 
 For each repo applicable to the current platform, marshal picks one action:
 
-| Repo dir on disk | `update_cmd` | Action |
-|------------------|--------------|--------|
-| Doesn't exist | — | `git clone` + `install_cmd` (in `install_cwd`) |
-| Exists | present | `update_cmd` (in `install_cwd`) |
-| Exists | absent / `null` | `git pull --ff-only` + `install_cmd` |
+| Repo dir on disk | `update_cmd` | `install_cmd` | Action |
+|------------------|--------------|---------------|--------|
+| Doesn't exist | — | present | `git clone` + `install_cmd` (in `install_cwd`) |
+| Doesn't exist | — | absent | `git clone` only |
+| Exists | present | — | `update_cmd` (in `install_cwd`) |
+| Exists | absent / `null` | present | `git pull --ff-only` + `install_cmd` |
+| Exists | absent / `null` | absent | `git pull --ff-only` only |
 
 ### Hook execution
 

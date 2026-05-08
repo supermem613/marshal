@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, normalize } from "node:path";
 import { MarshalContext } from "../context.js";
 import { requireBinding, BindingError } from "../binding.js";
+import { ProcessError } from "../runners/types.js";
 import {
   readManifest,
   ManifestError,
@@ -47,11 +48,10 @@ export async function addCommand(
     ctx.log.error(platforms.message);
     return platforms.code;
   }
-  const installCmd = opts.install_cmd ?? "npm install && npm run build && npm link";
   const newRepo: Repo = {
     name: resolvedName,
     url,
-    install_cmd: installCmd,
+    ...(opts.install_cmd ? { install_cmd: opts.install_cmd } : {}),
     ...(opts.install_cwd ? { install_cwd: opts.install_cwd } : {}),
     ...(opts.update_cmd ? { update_cmd: opts.update_cmd } : {}),
     ...(platforms && platforms.length > 0
@@ -78,6 +78,7 @@ export async function addCommand(
   const path = join(bound, MANIFEST_FILENAME);
   writeFileSync(path, JSON.stringify(next, null, 2) + "\n", "utf8");
   ctx.log.success(`Updated ${path}`);
+  await commitAndPush(ctx, bound, `marshal: add repo ${resolvedName}`);
 
   if (!opts.sync) {
     ctx.log.info("Run `marshal sync` to apply.");
@@ -135,6 +136,7 @@ export async function addAppCommand(
   const path = join(bound, MANIFEST_FILENAME);
   writeFileSync(path, JSON.stringify(next, null, 2) + "\n", "utf8");
   ctx.log.success(`Updated ${path}`);
+  await commitAndPush(ctx, bound, `marshal: add app ${id}`);
 
   if (!opts.sync) {
     ctx.log.info("Run `marshal sync` to apply.");
@@ -203,6 +205,7 @@ export async function addHookCommand(
   const path = join(bound, MANIFEST_FILENAME);
   writeFileSync(path, JSON.stringify(next, null, 2) + "\n", "utf8");
   ctx.log.success(`Updated ${path}`);
+  await commitAndPush(ctx, bound, `marshal: add hook ${name}`);
 
   if (!opts.sync) {
     ctx.log.info("Run `marshal sync` to apply.");
@@ -267,6 +270,7 @@ export async function removeCommand(
   const path = join(bound, MANIFEST_FILENAME);
   writeFileSync(path, JSON.stringify(next, null, 2) + "\n", "utf8");
   ctx.log.success(`Updated ${path}`);
+  await commitAndPush(ctx, bound, `marshal: remove repo ${name}`);
 
   if (opts.deleteFiles !== false) {
     const { rmSync, existsSync } = await import("node:fs");
@@ -340,6 +344,26 @@ function isValidHookCwd(cwd: string): boolean {
     .split(/[\\/]+/)
     .filter(Boolean);
   return !segments.includes("..");
+}
+
+// Commit and push marshal.json changes in the bound dotfiles repo.
+// Best-effort: logs warnings on failure but does not fail the command.
+async function commitAndPush(ctx: MarshalContext, dotfilesRepo: string, message: string): Promise<void> {
+  try {
+    await ctx.runner.exec(`git add ${MANIFEST_FILENAME}`, { cwd: dotfilesRepo, inherit: false });
+    await ctx.runner.exec(`git commit -m "${message}"`, { cwd: dotfilesRepo, inherit: false });
+  } catch (err) {
+    const detail = err instanceof ProcessError ? err.result.stderr || err.result.stdout : (err as Error).message;
+    ctx.log.warn(`Failed to commit ${MANIFEST_FILENAME}: ${detail.trim().split("\n")[0]}`);
+    return;
+  }
+  try {
+    await ctx.runner.exec(`git push`, { cwd: dotfilesRepo, inherit: false });
+    ctx.log.success(`Committed and pushed ${MANIFEST_FILENAME}`);
+  } catch (err) {
+    const detail = err instanceof ProcessError ? err.result.stderr || err.result.stdout : (err as Error).message;
+    ctx.log.warn(`Committed but failed to push: ${detail.trim().split("\n")[0]}`);
+  }
 }
 
 void readFileSync;

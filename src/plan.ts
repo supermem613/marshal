@@ -11,15 +11,17 @@ import { resolvePath, expandHome, DEFAULT_REPOS_PATH } from "./paths.js";
 
 export type RepoAction =
   | "clone-and-install"   // doesn't exist yet — clone + run install_cmd
+  | "clone"               // doesn't exist yet, no install_cmd — clone only
   | "update"              // exists, has update_cmd — run update_cmd
-  | "pull-and-install";   // exists, no update_cmd — git pull + install_cmd
+  | "pull-and-install"    // exists, no update_cmd — git pull + install_cmd
+  | "pull";               // exists, no update_cmd, no install_cmd — git pull only
 
 export interface RepoStep {
   name: string;
   url: string;
   targetDir: string;     // absolute path of the cloned repo root
   installCwd: string;    // absolute path where install_cmd / update_cmd runs (may equal targetDir or a subdir)
-  installCmd: string;
+  installCmd: string | null;
   updateCmd: string | null;
   action: RepoAction;
   exists: boolean;
@@ -77,21 +79,22 @@ export function buildPlan(manifest: Manifest, opts: BuildPlanOptions): Plan {
         ? join(targetDir, r.install_cwd)
         : targetDir;
       const exists = existsSync(targetDir);
+      const installCmd = r.install_cmd ?? null;
       const updateCmd = r.update_cmd ?? null;
       let action: RepoAction;
       if (!exists) {
-        action = "clone-and-install";
+        action = installCmd ? "clone-and-install" : "clone";
       } else if (updateCmd) {
         action = "update";
       } else {
-        action = "pull-and-install";
+        action = installCmd ? "pull-and-install" : "pull";
       }
       return {
         name: r.name,
         url: r.url,
         targetDir,
         installCwd,
-        installCmd: r.install_cmd,
+        installCmd,
         updateCmd,
         action,
         exists,

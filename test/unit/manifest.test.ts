@@ -42,12 +42,12 @@ test("ManifestSchema: rejects wrong version", () => {
   assert.equal(r.success, false);
 });
 
-test("ManifestSchema: rejects missing repo.install_cmd", () => {
+test("ManifestSchema: accepts repo without install_cmd", () => {
   const r = ManifestSchema.safeParse({
     version: 1,
     repos: [{ name: "x", url: "https://x" }],
   });
-  assert.equal(r.success, false);
+  assert.equal(r.success, true);
 });
 
 test("ManifestSchema: rejects bad repo.name characters", () => {
