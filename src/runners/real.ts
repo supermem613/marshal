@@ -4,7 +4,7 @@ import { ExecOptions, ExecResult, ProcessError, ProcessRunner } from "./types.js
 // Real implementation: runs commands through the platform shell so PATH
 // resolution, .cmd shims (Windows), and quoting work as users expect.
 // shell:true is required on Windows for npm/git/winget to resolve their .cmd
-// shims under Node 20.12+ (CVE-2024-27980 mitigation).
+// shims under current Node runtimes (CVE-2024-27980 mitigation).
 export class RealProcessRunner implements ProcessRunner {
   exec(command: string, opts: ExecOptions = {}): Promise<ExecResult> {
     const cwd = opts.cwd ?? process.cwd();
