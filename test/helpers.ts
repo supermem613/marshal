@@ -27,6 +27,7 @@ export interface MakeContextOptions {
   marshalSourceDir?: string;
   // If provided, the binding file is pre-written with this dotfilesRepo path.
   preBoundTo?: string;
+  preBoundProfile?: string;
 }
 
 export function makeContext(opts: MakeContextOptions = {}): TestContext {
@@ -38,7 +39,11 @@ export function makeContext(opts: MakeContextOptions = {}): TestContext {
   if (opts.preBoundTo) {
     writeFileSync(
       bindingPath,
-      JSON.stringify({ version: 1, dotfilesRepo: opts.preBoundTo }, null, 2),
+      JSON.stringify({
+        version: 1,
+        dotfilesRepo: opts.preBoundTo,
+        ...(opts.preBoundProfile ? { profile: opts.preBoundProfile } : {}),
+      }, null, 2),
       "utf8",
     );
   }

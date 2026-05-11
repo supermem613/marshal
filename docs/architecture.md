@@ -10,6 +10,7 @@
 - **Lean deps.** Three runtime deps: `chalk`, `commander`, `zod`. Every additional dep is a code-review conversation.
 - **`--json` everywhere.** Any command producing output supports `--json` for scriptable consumption (`status`, `list`, `doctor`).
 - **One source of truth.** Binding lives in exactly one place (`~/.marshal.json`). No env-var fallback, no walk-up-tree discovery — predictable across shells, terminals, IDEs, CI.
+- **Explicit profiles, no hostname routing.** `marshal.json` declares profile names and item membership. The active profile is chosen locally in `~/.marshal.json`; sync never infers it from hostname or a shared machine map.
 
 ---
 
@@ -21,6 +22,7 @@
 | `src/context.ts` | `MarshalContext` — single dependency-injection seam (`homeDir`, `runner`, `log`, `prompt`, `platform`, `marshalSourceDir`). |
 | `src/manifest.ts` | `marshal.json` zod schema + parsing, including sync hooks. |
 | `src/binding.ts` | `~/.marshal.json` read/write/clear. |
+| `src/profile.ts` | Active profile resolution and validation helpers. |
 | `src/platform.ts` | Platform detection and per-row platform filtering. |
 | `src/paths.ts` | `~` expansion, default `reposPath`, absolute resolution. |
 | `src/url.ts` | URL-vs-path detection (scheme-prefix only — Windows paths stay paths). |
@@ -43,6 +45,7 @@ src/
   context.ts              MarshalContext (DI seam)
   manifest.ts             marshal.json schema (zod)
   binding.ts              ~/.marshal.json read/write
+  profile.ts              Profile resolution + validation
   platform.ts             Platform detection + filter
   paths.ts                ~ expansion, default reposPath
   url.ts                  URL-vs-path detection
@@ -62,6 +65,7 @@ src/
     sync.ts               Plan → preview → confirm → apply
     status.ts             Machine state report (+ --json)
     list.ts               Full manifest dump (+ --json)
+    profile.ts            Machine-local profile list/get/set/clear
     doctor.ts             Env + binding + manifest checks (+ --json)
     add.ts                Add or remove tool rows
     update.ts             Self-update

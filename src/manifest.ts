@@ -11,16 +11,19 @@ import { SUPPORTED_PLATFORMS } from "./platform.js";
 export const MANIFEST_FILENAME = "marshal.json";
 
 const PlatformSchema = z.enum(SUPPORTED_PLATFORMS as unknown as [string, ...string[]]);
+const ProfileNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/i, "profile must be alphanumeric/hyphen");
 
 const AppSchema = z.object({
   id: z.string().min(1, "app.id required"),
   platforms: z.array(PlatformSchema).optional(),
+  profiles: z.array(ProfileNameSchema).optional(),
 });
 
 const RepoSchema = z.object({
   name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/i, "repo.name must be alphanumeric/hyphen"),
   url: z.string().min(1, "repo.url required"),
   platforms: z.array(PlatformSchema).optional(),
+  profiles: z.array(ProfileNameSchema).optional(),
   install_cwd: z.string().optional(),
   install_cmd: z.string().min(1).optional(),
   update_cmd: z.string().min(1).nullable().optional(),
@@ -33,17 +36,49 @@ const HookSchema = z.object({
   cwd: z.string().optional(),
   interactive: z.boolean().optional().default(false),
   platforms: z.array(PlatformSchema).optional(),
+  profiles: z.array(ProfileNameSchema).optional(),
 });
 
 export const ManifestSchema = z.object({
   version: z.literal(1),
   reposPath: z.string().optional(),
+  profiles: z.array(ProfileNameSchema).default([]),
   apps: z.array(AppSchema).default([]),
   repos: z.array(RepoSchema).default([]),
   hooks: z.array(HookSchema).default([]),
 }).superRefine((m, ctx) => {
+  const seenProfiles = new Set<string>();
+  m.profiles.forEach((profile, i) => {
+    if (seenProfiles.has(profile)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["profiles", i],
+        message: `duplicate profile: ${profile}`,
+      });
+    }
+    seenProfiles.add(profile);
+  });
+  const validateProfiles = (
+    profiles: string[] | undefined,
+    pathPrefix: Array<string | number>,
+  ): void => {
+    if (!profiles) {
+      return;
+    }
+    profiles.forEach((profile, i) => {
+      if (!seenProfiles.has(profile)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [...pathPrefix, "profiles", i],
+          message: `unknown profile: ${profile}`,
+        });
+      }
+    });
+  };
+  m.apps.forEach((a, i) => validateProfiles(a.profiles, ["apps", i]));
   const seenRepos = new Set<string>();
   m.repos.forEach((r, i) => {
+    validateProfiles(r.profiles, ["repos", i]);
     if (seenRepos.has(r.name)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -55,6 +90,7 @@ export const ManifestSchema = z.object({
   });
   const seenHooks = new Set<string>();
   m.hooks.forEach((h, i) => {
+    validateProfiles(h.profiles, ["hooks", i]);
     if (seenHooks.has(h.name)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

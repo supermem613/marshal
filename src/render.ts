@@ -1,4 +1,5 @@
 import { Plan, RepoStep } from "./plan.js";
+import { formatActiveProfile } from "./profile.js";
 import { Logger } from "./ui/log.js";
 
 // Render a Plan as human-readable text. Pure function over Plan + Logger
@@ -15,10 +16,10 @@ const ACTION_LABEL: Record<RepoStep["action"], string> = {
 export function renderPlan(plan: Plan, log: Logger): void {
   const total = plan.apps.length + plan.repos.length + plan.hooks.length;
   if (total === 0) {
-    log.info("Plan: nothing to do (no apps or repos applicable to this platform).");
+    log.info(`Plan (${plan.platform}, profile: ${formatActiveProfile(plan.activeProfile)}): nothing to do.`);
     return;
   }
-  log.info(`Plan (${plan.platform}): ${plan.apps.length} app(s), ${plan.repos.length} repo(s), ${plan.hooks.length} hook(s)`);
+  log.info(`Plan (${plan.platform}, profile: ${formatActiveProfile(plan.activeProfile)}): ${plan.apps.length} app(s), ${plan.repos.length} repo(s), ${plan.hooks.length} hook(s)`);
   if (plan.apps.length > 0) {
     log.info("");
     log.info("  Apps (winget install):");

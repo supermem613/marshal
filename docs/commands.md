@@ -6,18 +6,19 @@ Full reference for every `marshal` subcommand. Run `marshal --help` for the same
 
 | Verb | Usage | Description |
 |------|-------|-------------|
-| `add` | `marshal add <url> [name]` | Append a tool repo to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--install-cmd`, `--update-cmd`, `--install-cwd`, `--platforms`, `--sync`, `-y`. |
-| `add-app` | `marshal add-app <id>` | Append a prerequisite app to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--platforms`, `--sync`, `-y`. |
-| `add-hook` | `marshal add-hook <name> --cmd "<cmd>"` | Append a sync hook to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--cwd`, `--interactive`, `--platforms`, `--sync`, `-y`. |
+| `add` | `marshal add <url> [name]` | Append a tool repo to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--install-cmd`, `--update-cmd`, `--install-cwd`, `--platforms`, `--profiles`, `--sync`, `-y`. |
+| `add-app` | `marshal add-app <id>` | Append a prerequisite app to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--platforms`, `--profiles`, `--sync`, `-y`. |
+| `add-hook` | `marshal add-hook <name> --cmd "<cmd>"` | Append a sync hook to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--cwd`, `--interactive`, `--platforms`, `--profiles`, `--sync`, `-y`. |
 | `bind` | `marshal bind <url\|path>` | Bind to a dotfiles repo. URLs auto-clone + provision; paths just record the binding. Flags: `--path <p>`, `--show`, `--unset`, `--no-sync`, `-y`. |
 | `cd` | `marshal cd` | Spawn a subshell rooted at the bound dotfiles repo (like `chezmoi cd`). |
 | `doctor` | `marshal doctor` | Health check: Node version, git, winget (Win32), binding, manifest. `--json` supported. |
 | `home` | `marshal home` | Spawn a subshell rooted at the marshal source repo. |
 | `init` | `marshal init` | Create a minimal `marshal.json` in the current directory and record the binding. `--no-bind` to skip binding. |
 | `list` | `marshal list` | Print the full manifest contents (apps, repos, hooks, with platform filters). `--json` supported. |
+| `profile` | `marshal profile [list|get|set|clear] [name]` | Manage the machine-local active profile stored in `~/.marshal.json`. `set` validates against profiles declared in `marshal.json`. |
 | `remove` | `marshal remove <name>` | Remove a tool from the manifest and delete its cloned directory. `--keep-files` to preserve the clone. `-y` to skip confirmation. |
 | `status` | `marshal status` | Show what's recorded, what applies to this platform, and what's installed. `--json` for machine output. |
-| `sync` | `marshal sync [repos...]` | Apply the manifest: install apps, clone/build/refresh repos, then run configured hooks. Optionally limit to named tools. Flags: `-y`, `--hooks`. |
+| `sync` | `marshal sync [repos...]` | Apply the manifest: install apps, clone/build/refresh repos, then run configured hooks. Optionally limit to named tools. Flags: `-y`, `--hooks`, `--profile <name>` one-shot override. |
 | `update` | `marshal update` | Self-update marshal: `git pull --ff-only`, then `npm install && npm run build` only when the pull brings in new changes. |
 | `where` | `marshal where` | Print the absolute path of the bound dotfiles repo. |
 
@@ -70,7 +71,8 @@ Override the install behavior:
 ```pwsh
 marshal add https://github.com/<you>/desktop-tool.git \
   --install-cmd "./build.ps1" \
-  --platforms win32
+  --platforms win32 \
+  --profiles work-laptop
 marshal sync
 ```
 
@@ -84,6 +86,21 @@ marshal add-app Microsoft.DotNet.SDK.9 --platforms win32 -y
 marshal add-hook config-sync --cmd "configsync sync" --interactive -y
 marshal sync
 ```
+
+### Machine profiles
+
+Profiles let one dotfiles repo contain shared items and machine-specific items.
+
+```pwsh
+marshal profile list
+marshal profile set work-laptop
+marshal profile get
+marshal sync
+```
+
+`marshal.json` declares valid profile names. `marshal profile set <name>` writes the selected profile to `~/.marshal.json`, validates the name, and keeps machine identity out of the shared manifest. Items without a `profiles` field are shared across all profiles; items with `profiles` are included only when the active profile matches.
+
+Use `marshal sync --profile <name>` for a one-shot override without changing `~/.marshal.json`.
 
 ### Removing a tool
 

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { Manifest, Repo, App, Hook } from "./manifest.js";
 import { Platform, appliesToPlatform } from "./platform.js";
 import { resolvePath, expandHome, DEFAULT_REPOS_PATH } from "./paths.js";
+import { ActiveProfile, profileApplies } from "./profile.js";
 
 // "Plan, then apply" is marshal's safety contract. buildPlan is a pure
 // function: read filesystem state once, return a complete description of
@@ -45,6 +46,7 @@ export interface Plan {
   hooks: HookStep[];
   reposPath: string;     // absolute path of the resolved reposPath (for display)
   platform: Platform;
+  activeProfile: ActiveProfile;
 }
 
 export interface BuildPlanOptions {
@@ -55,6 +57,7 @@ export interface BuildPlanOptions {
   // (apps unchanged.) Used by `marshal sync <name1> <name2>`.
   repoFilter?: string[];
   includeHooks?: boolean;
+  activeProfile?: ActiveProfile;
 }
 
 export function resolveReposPath(manifest: Manifest, homeDir: string): string {
@@ -65,13 +68,16 @@ export function resolveReposPath(manifest: Manifest, homeDir: string): string {
 export function buildPlan(manifest: Manifest, opts: BuildPlanOptions): Plan {
   const reposPath = resolveReposPath(manifest, opts.homeDir);
   const filter = opts.repoFilter && opts.repoFilter.length > 0 ? new Set(opts.repoFilter) : null;
+  const activeProfile = opts.activeProfile ?? { profile: null, source: "none" };
 
   const apps: AppStep[] = manifest.apps
     .filter((a: App) => appliesToPlatform(a.platforms as Platform[] | undefined, opts.platform))
+    .filter((a) => profileApplies(a.profiles, activeProfile.profile))
     .map((a) => ({ id: a.id }));
 
   const repos: RepoStep[] = manifest.repos
     .filter((r: Repo) => appliesToPlatform(r.platforms as Platform[] | undefined, opts.platform))
+    .filter((r) => profileApplies(r.profiles, activeProfile.profile))
     .filter((r) => !filter || filter.has(r.name))
     .map((r) => {
       const targetDir = join(reposPath, r.name);
@@ -105,6 +111,7 @@ export function buildPlan(manifest: Manifest, opts: BuildPlanOptions): Plan {
     ? []
     : manifest.hooks
       .filter((h: Hook) => appliesToPlatform(h.platforms as Platform[] | undefined, opts.platform))
+      .filter((h) => profileApplies(h.profiles, activeProfile.profile))
       .map((h) => ({
         name: h.name,
         stage: h.stage,
@@ -113,7 +120,7 @@ export function buildPlan(manifest: Manifest, opts: BuildPlanOptions): Plan {
         interactive: h.interactive,
       }));
 
-  return { apps, repos, hooks, reposPath, platform: opts.platform };
+  return { apps, repos, hooks, reposPath, platform: opts.platform, activeProfile };
 }
 
 // Verify a filter resolved to all real repo names — surface typos before
@@ -123,10 +130,12 @@ export function unknownRepoNames(
   manifest: Manifest,
   platform: Platform,
   requested: readonly string[],
+  activeProfile?: string | null,
 ): string[] {
   const known = new Set(
     manifest.repos
       .filter((r) => appliesToPlatform(r.platforms as Platform[] | undefined, platform))
+      .filter((r) => activeProfile === undefined || profileApplies(r.profiles, activeProfile))
       .map((r) => r.name),
   );
   return requested.filter((n) => !known.has(n));

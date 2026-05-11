@@ -4,7 +4,14 @@ import { CaptureLogger } from "../../src/ui/log.js";
 import { renderPlan, renderResults } from "../../src/render.js";
 import { Plan } from "../../src/plan.js";
 
-const emptyPlan: Plan = { apps: [], repos: [], hooks: [], reposPath: "/x", platform: "win32" };
+const emptyPlan: Plan = {
+  apps: [],
+  repos: [],
+  hooks: [],
+  reposPath: "/x",
+  platform: "win32",
+  activeProfile: { profile: null, source: "none" },
+};
 
 test("renderPlan: prints nothing-to-do for empty plan", () => {
   const log = new CaptureLogger();
@@ -37,9 +44,11 @@ test("renderPlan: lists apps + repos", () => {
     }],
     reposPath: "/r",
     platform: "win32",
+    activeProfile: { profile: "work", source: "binding" },
   };
   renderPlan(plan, log);
   const text = log.captured.join("\n");
+  assert.ok(text.includes("profile: work (binding)"));
   assert.ok(text.includes("Git.Git"));
   assert.ok(text.includes("tool-alpha"));
   assert.ok(text.includes("CLONE + INSTALL"));

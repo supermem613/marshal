@@ -19,19 +19,22 @@ test("ManifestSchema: accepts full manifest", () => {
   const r = ManifestSchema.safeParse({
     version: 1,
     reposPath: "~/repos",
-    apps: [{ id: "Git.Git" }, { id: "Microsoft.DotNet.SDK.9", platforms: ["win32"] }],
+    profiles: ["work", "personal"],
+    apps: [{ id: "Git.Git" }, { id: "Microsoft.DotNet.SDK.9", platforms: ["win32"], profiles: ["work"] }],
     repos: [{
       name: "tool-alpha",
       url: "https://github.com/me/tool-alpha.git",
       install_cmd: "npm install && npm run build && npm link",
       update_cmd: "tool-alpha update",
       platforms: ["win32", "darwin"],
+      profiles: ["work", "personal"],
     }],
     hooks: [{
       name: "config-sync",
       stage: "post-repos",
       cmd: "configsync sync",
       interactive: true,
+      profiles: ["personal"],
     }],
   });
   assert.ok(r.success, JSON.stringify(r));
@@ -94,6 +97,31 @@ test("ManifestSchema: rejects duplicate hook names", () => {
     ],
   });
   assert.equal(r.success, false);
+});
+
+test("ManifestSchema: rejects duplicate profiles", () => {
+  const r = ManifestSchema.safeParse({
+    version: 1,
+    profiles: ["work", "work"],
+  });
+  assert.equal(r.success, false);
+});
+
+test("ManifestSchema: rejects item profile not declared at top level", () => {
+  const r = ManifestSchema.safeParse({
+    version: 1,
+    profiles: ["work"],
+    repos: [{ name: "tool-alpha", url: "u", profiles: ["personal"] }],
+  });
+  assert.equal(r.success, false);
+});
+
+test("ManifestSchema: defaults profiles to empty for legacy manifests", () => {
+  const r = ManifestSchema.safeParse({ version: 1 });
+  assert.ok(r.success);
+  if (r.success) {
+    assert.deepEqual(r.data.profiles, []);
+  }
 });
 
 test("ManifestSchema: rejects absolute hook cwd", () => {

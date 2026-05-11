@@ -63,6 +63,17 @@ test("readBinding throws on schema violation", () => {
   }
 });
 
+test("readBinding accepts profile field", () => {
+  const { home, cleanup } = fresh();
+  try {
+    writeFileSync(bindingPath(home), JSON.stringify({ version: 1, dotfilesRepo: "/x", profile: "work-laptop" }));
+    const b = readBinding(home);
+    assert.equal(b?.profile, "work-laptop");
+  } finally {
+    cleanup();
+  }
+});
+
 test("writeBinding refuses non-existent dotfiles dir", () => {
   const { home, cleanup } = fresh();
   try {
@@ -94,6 +105,22 @@ test("writeBinding then readBinding roundtrip", () => {
   } finally {
     cleanup();
     df.cleanup();
+  }
+});
+
+test("writeBinding preserves existing profile", () => {
+  const { home, cleanup } = fresh();
+  const df1 = makeDotfiles();
+  const df2 = makeDotfiles();
+  try {
+    writeFileSync(bindingPath(home), JSON.stringify({ version: 1, dotfilesRepo: df1.dir, profile: "work" }));
+    const w = writeBinding(df2.dir, home);
+    assert.equal(w.dotfilesRepo, df2.dir);
+    assert.equal(w.profile, "work");
+  } finally {
+    cleanup();
+    df1.cleanup();
+    df2.cleanup();
   }
 });
 

@@ -13,6 +13,7 @@ export const BINDING_FILENAME = ".marshal.json";
 export const BindingSchema = z.object({
   version: z.literal(1),
   dotfilesRepo: z.string().min(1),
+  profile: z.string().regex(/^[a-z0-9][a-z0-9-]*$/i, "profile must be alphanumeric/hyphen").optional(),
 });
 
 export type Binding = z.infer<typeof BindingSchema>;
@@ -64,7 +65,24 @@ export function writeBinding(dotfilesRepo: string, home: string = homedir()): Bi
   }
   const path = bindingPath(home);
   mkdirSync(dirname(path), { recursive: true });
-  const binding: Binding = { version: 1, dotfilesRepo };
+  const existing = readBinding(home);
+  const binding: Binding = {
+    version: 1,
+    dotfilesRepo,
+    ...(existing?.profile ? { profile: existing.profile } : {}),
+  };
+  writeFileSync(path, JSON.stringify(binding, null, 2) + "\n", "utf8");
+  return binding;
+}
+
+export function writeBindingProfile(profile: string | null, home: string = homedir()): Binding {
+  const existing = requireBinding(home);
+  const path = bindingPath(home);
+  const binding: Binding = {
+    version: 1,
+    dotfilesRepo: existing.dotfilesRepo,
+    ...(profile ? { profile } : {}),
+  };
   writeFileSync(path, JSON.stringify(binding, null, 2) + "\n", "utf8");
   return binding;
 }

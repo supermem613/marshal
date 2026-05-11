@@ -40,6 +40,7 @@ marshal add-app Microsoft.DotNet.SDK.9 --platforms win32 -y
 
 marshal add-hook config-sync --cmd "configsync sync" --interactive -y
 
+marshal profile set work-laptop   # optional; required when marshal.json has profile-scoped items
 marshal sync
 ```
 
@@ -47,7 +48,8 @@ That flow keeps onboarding simple:
 
 1. Bind marshal to the customer dotfiles repo.
 2. Add repos, prerequisites, and hooks with CLI commands instead of hand-editing JSON.
-3. Run one `marshal sync` to install apps, provision repos, and run any configured hooks.
+3. Set a machine profile when your manifest has profile-scoped items.
+4. Run one `marshal sync` to install apps, provision repos, and run any configured hooks.
 
 Prerequisites are not installed at `marshal add-app` time. They are installed on
 the next `marshal sync`, and re-running `sync` is safe: marshal checks whether a

@@ -15,6 +15,7 @@ import { cdCommand, homeCommand } from "./commands/cd.js";
 import { updateCommand } from "./commands/update.js";
 import { initCommand } from "./commands/init.js";
 import { addAppCommand, addCommand, addHookCommand, removeCommand } from "./commands/add.js";
+import { profileCommand } from "./commands/profile.js";
 
 const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
 const VERSION = (JSON.parse(readFileSync(pkgPath, "utf8")) as { version: string }).version;
@@ -61,8 +62,9 @@ program
   .description("Provision the bound fleet: install apps, clone/build/update repos, then run configured hooks.")
   .option("-y, --yes", "Skip confirmation prompt")
   .option("--hooks", "Run configured sync hooks even when limiting sync to named repos")
+  .option("--profile <name>", "Use a profile for this sync only; does not update ~/.marshal.json")
   .action(async (repos, opts) => {
-    process.exit(await syncCommand(ctx, { yes: opts.yes, repos, hooks: opts.hooks }));
+    process.exit(await syncCommand(ctx, { yes: opts.yes, repos, hooks: opts.hooks, profile: opts.profile }));
   });
 
 program
@@ -79,6 +81,13 @@ program
   .option("--json", "Emit machine-readable JSON")
   .action(async (opts) => {
     process.exit(await listCommand(ctx, opts));
+  });
+
+program
+  .command("profile [action] [name]")
+  .description("Show, list, set, or clear the machine-local active profile")
+  .action(async (action, name) => {
+    process.exit(await profileCommand(ctx, action, name));
   });
 
 program
@@ -116,6 +125,7 @@ program
   .option("--update-cmd <cmd>", "Update command (default: rerun install_cmd after git pull)")
   .option("--install-cwd <subdir>", "Subdirectory inside the repo where install runs")
   .option("--platforms <list>", "Comma-separated platform list (win32,darwin,linux)", (v) => v.split(",").map((s) => s.trim()))
+  .option("--profiles <list>", "Comma-separated profile list declared in marshal.json", (v) => v.split(",").map((s) => s.trim()))
   .option("--sync", "Also run sync after writing the manifest")
   .addOption(new Option("--no-sync").hideHelp())
   .option("-y, --yes", "Skip confirmation prompt")
@@ -127,6 +137,7 @@ program
   .command("add-app <id>")
   .description("Add a prerequisite app to the manifest. Run `marshal sync` to apply, or pass --sync.")
   .option("--platforms <list>", "Comma-separated platform list (win32,darwin,linux)", (v) => v.split(",").map((s) => s.trim()))
+  .option("--profiles <list>", "Comma-separated profile list declared in marshal.json", (v) => v.split(",").map((s) => s.trim()))
   .option("--sync", "Also run sync after writing the manifest")
   .option("-y, --yes", "Skip confirmation prompt")
   .action(async (id, opts) => {
@@ -140,6 +151,7 @@ program
   .option("--cwd <path>", "Relative path under the bound dotfiles repo where the hook runs")
   .option("--interactive", "Run the hook with a real terminal attached")
   .option("--platforms <list>", "Comma-separated platform list (win32,darwin,linux)", (v) => v.split(",").map((s) => s.trim()))
+  .option("--profiles <list>", "Comma-separated profile list declared in marshal.json", (v) => v.split(",").map((s) => s.trim()))
   .option("--sync", "Also run sync after writing the manifest")
   .option("-y, --yes", "Skip confirmation prompt")
   .action(async (name, opts) => {

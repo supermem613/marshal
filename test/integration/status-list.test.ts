@@ -64,6 +64,30 @@ test("status --json: emits structured report", async () => {
   }
 });
 
+test("status: reports active profile and applies profile filter", async () => {
+  const df = makeDotfilesRepo({
+    version: 1,
+    profiles: ["work", "personal"],
+    repos: [
+      { name: "shared", url: "u" },
+      { name: "work-tool", url: "u", profiles: ["work"] },
+      { name: "personal-tool", url: "u", profiles: ["personal"] },
+    ],
+  });
+  const t = makeContext({ preBoundTo: df.dir, preBoundProfile: "work" });
+  try {
+    const code = await statusCommand(t.ctx, {});
+    assert.equal(code, 0);
+    const text = t.log.captured.join("\n");
+    assert.ok(text.includes("Profile: work (binding)"));
+    assert.ok(text.includes("missing") && text.includes("work-tool"));
+    assert.ok(text.includes("skipped") && text.includes("personal-tool"));
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
 test("list: prints apps and repos with platform/cwd/update info", async () => {
   const df = makeDotfilesRepo({
     version: 1,
@@ -90,6 +114,30 @@ test("list: prints apps and repos with platform/cwd/update info", async () => {
     assert.ok(text.includes("[win32]"));
     assert.ok(text.includes("hooks (1)"));
     assert.ok(text.includes("config-sync"));
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("list: prints declared and item profiles", async () => {
+  const df = makeDotfilesRepo({
+    version: 1,
+    profiles: ["work"],
+    apps: [{ id: "Git.Git", profiles: ["work"] }],
+    repos: [{ name: "tool-suite", url: "u", profiles: ["work"] }],
+    hooks: [{ name: "config-sync", stage: "post-repos", cmd: "configsync sync", interactive: false, profiles: ["work"] }],
+  });
+  const t = makeContext({ preBoundTo: df.dir, preBoundProfile: "work" });
+  try {
+    const code = await listCommand(t.ctx, {});
+    assert.equal(code, 0);
+    const text = t.log.captured.join("\n");
+    assert.ok(text.includes("Profile:   work (binding)"));
+    assert.ok(text.includes("profiles (1): work"));
+    assert.ok(text.includes("Git.Git <work>"));
+    assert.ok(text.includes("tool-suite") && text.includes("<work>"));
+    assert.ok(text.includes("config-sync") && text.includes("<work>"));
   } finally {
     t.cleanup();
     df.cleanup();

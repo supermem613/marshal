@@ -43,6 +43,96 @@ test("sync: empty manifest → no-op success", async () => {
   }
 });
 
+test("sync: profile-scoped manifest without active profile fails loudly", async () => {
+  const df = makeDotfilesRepo({
+    version: 1,
+    profiles: ["work"],
+    repos: [{ name: "work-tool", url: "u", profiles: ["work"] }],
+  });
+  const t = makeContext({ preBoundTo: df.dir });
+  try {
+    const code = await syncCommand(t.ctx, { yes: true });
+    assert.equal(code, 1);
+    assert.equal(t.runner.calls.length, 1);
+    assert.ok(t.log.captured.some((l) => l.includes("no active profile")));
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("sync: active profile filters apps repos and hooks", async () => {
+  const df = makeDotfilesRepo({
+    version: 1,
+    profiles: ["work", "personal"],
+    repos: [
+      { name: "shared", url: "u1", update_cmd: "shared update" },
+      { name: "work-tool", url: "u2", update_cmd: "work update", profiles: ["work"] },
+      { name: "personal-tool", url: "u3", update_cmd: "personal update", profiles: ["personal"] },
+    ],
+    hooks: [
+      { name: "shared-hook", stage: "post-repos", cmd: "shared hook", interactive: false },
+      { name: "work-hook", stage: "post-repos", cmd: "work hook", interactive: false, profiles: ["work"] },
+    ],
+  });
+  const t = makeContext({ preBoundTo: df.dir, preBoundProfile: "work" });
+  stubInstalledRepo(join(t.homeDir, "repos"), "shared");
+  stubInstalledRepo(join(t.homeDir, "repos"), "work-tool");
+  stubInstalledRepo(join(t.homeDir, "repos"), "personal-tool");
+  try {
+    const code = await syncCommand(t.ctx, { yes: true });
+    assert.equal(code, 0);
+    assert.deepEqual(t.runner.calls.map((c) => c.command), [
+      "git pull --ff-only",
+      "shared update",
+      "work update",
+      "shared hook",
+      "work hook",
+    ]);
+    assert.ok(t.log.captured.some((l) => l.includes("profile: work (binding)")));
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("sync: --profile is a validated one-shot override", async () => {
+  const df = makeDotfilesRepo({
+    version: 1,
+    profiles: ["work"],
+    repos: [{ name: "work-tool", url: "u", update_cmd: "work update", profiles: ["work"] }],
+  });
+  const t = makeContext({ preBoundTo: df.dir });
+  stubInstalledRepo(join(t.homeDir, "repos"), "work-tool");
+  try {
+    const code = await syncCommand(t.ctx, { yes: true, profile: "work" });
+    assert.equal(code, 0);
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["git pull --ff-only", "work update"]);
+    assert.ok(t.log.captured.some((l) => l.includes("profile: work (override)")));
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("sync: invalid local profile fails before applying plan", async () => {
+  const df = makeDotfilesRepo({
+    version: 1,
+    profiles: ["work"],
+    repos: [{ name: "work-tool", url: "u", profiles: ["work"] }],
+  });
+  const t = makeContext({ preBoundTo: df.dir, preBoundProfile: "personal" });
+  try {
+    const code = await syncCommand(t.ctx, { yes: true });
+    assert.equal(code, 1);
+    assert.equal(t.runner.calls.length, 1);
+    assert.ok(t.log.captured.some((l) => l.includes("Unknown profile")));
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
 test("sync: clones missing repo and runs install_cmd", async () => {
   const df = makeDotfilesRepo({
     version: 1,

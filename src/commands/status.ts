@@ -2,6 +2,7 @@ import { MarshalContext } from "../context.js";
 import { requireBinding, BindingError } from "../binding.js";
 import { readManifest, ManifestError } from "../manifest.js";
 import { buildPlan } from "../plan.js";
+import { formatActiveProfile, ProfileError, resolveActiveProfile } from "../profile.js";
 
 export interface StatusOptions {
   json?: boolean;
@@ -23,6 +24,8 @@ interface AppStatusRow {
 interface StatusReport {
   bound: string;
   platform: string;
+  profile: string | null;
+  profileSource: string;
   apps: AppStatusRow[];
   repos: RepoStatusRow[];
 }
@@ -50,10 +53,23 @@ export async function statusCommand(ctx: MarshalContext, opts: StatusOptions): P
     throw err;
   }
 
+  const binding = requireBinding(ctx.homeDir);
+  let activeProfile;
+  try {
+    activeProfile = resolveActiveProfile(manifest, binding);
+  } catch (err) {
+    if (err instanceof ProfileError) {
+      ctx.log.error(err.message);
+      return 1;
+    }
+    throw err;
+  }
+
   const plan = buildPlan(manifest, {
     homeDir: ctx.homeDir,
     dotfilesRepo: bound,
     platform: ctx.platform,
+    activeProfile,
   });
   const planRepoNames = new Set(plan.repos.map((r) => r.name));
   const planAppIds = new Set(plan.apps.map((a) => a.id));
@@ -76,6 +92,8 @@ export async function statusCommand(ctx: MarshalContext, opts: StatusOptions): P
   const report: StatusReport = {
     bound,
     platform: ctx.platform,
+    profile: activeProfile.profile,
+    profileSource: activeProfile.source,
     apps,
     repos,
   };
@@ -87,6 +105,7 @@ export async function statusCommand(ctx: MarshalContext, opts: StatusOptions): P
 
   ctx.log.info(`Bound: ${bound}`);
   ctx.log.info(`Platform: ${ctx.platform}`);
+  ctx.log.info(`Profile: ${formatActiveProfile(activeProfile)}`);
   ctx.log.info("");
   if (apps.length > 0) {
     ctx.log.info("Apps:");

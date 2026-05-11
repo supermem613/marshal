@@ -43,9 +43,15 @@ test("cli: --version prints version", () => {
 test("cli: --help lists every registered subcommand", () => {
   const r = run("--help");
   assert.equal(r.code, 0);
-  for (const cmd of ["doctor", "bind", "init", "sync", "status", "list", "where", "cd", "home", "update", "add", "add-app", "add-hook", "remove"]) {
+  for (const cmd of ["doctor", "bind", "init", "sync", "status", "list", "profile", "where", "cd", "home", "update", "add", "add-app", "add-hook", "remove"]) {
     assert.ok(r.stdout.includes(cmd), `expected --help to mention ${cmd}; got:\n${r.stdout}`);
   }
+});
+
+test("cli: sync --help mentions profile override", () => {
+  const r = run("sync --help");
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.includes("--profile"));
 });
 
 test("cli: unknown command prints commander error and exits non-zero", () => {

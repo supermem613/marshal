@@ -9,6 +9,7 @@ import { Manifest } from "../../src/manifest.js";
 function makeManifest(over: Partial<Manifest> = {}): Manifest {
   return {
     version: 1,
+    profiles: [],
     apps: [],
     repos: [],
     hooks: [],
@@ -56,6 +57,73 @@ test("buildPlan: filters apps and repos by platform", () => {
     const p = buildPlan(m, { homeDir: home, dotfilesRepo: home, platform: "win32" });
     assert.deepEqual(p.apps.map((a) => a.id), ["WinOnly", "All"]);
     assert.deepEqual(p.repos.map((r) => r.name), ["tool-win", "tool-alpha"]);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("buildPlan: legacy manifest with no profiles still includes everything platform-applicable", () => {
+  const home = mkdtempSync(join(tmpdir(), "marshal-plan-"));
+  try {
+    const m = makeManifest({
+      apps: [{ id: "All" }],
+      repos: [{ name: "tool-alpha", url: "u", install_cmd: "i" }],
+      hooks: [{ name: "config-sync", stage: "post-repos", cmd: "configsync sync", interactive: false }],
+    });
+    const p = buildPlan(m, { homeDir: home, dotfilesRepo: home, platform: "win32" });
+    assert.deepEqual(p.apps.map((a) => a.id), ["All"]);
+    assert.deepEqual(p.repos.map((r) => r.name), ["tool-alpha"]);
+    assert.deepEqual(p.hooks.map((h) => h.name), ["config-sync"]);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("buildPlan: filters apps repos and hooks by active profile", () => {
+  const home = mkdtempSync(join(tmpdir(), "marshal-plan-"));
+  try {
+    const m = makeManifest({
+      profiles: ["work", "personal"],
+      apps: [
+        { id: "Shared" },
+        { id: "Work", profiles: ["work"] },
+        { id: "Personal", profiles: ["personal"] },
+      ],
+      repos: [
+        { name: "shared", url: "u", install_cmd: "i" },
+        { name: "work", url: "u", install_cmd: "i", profiles: ["work"] },
+        { name: "personal", url: "u", install_cmd: "i", profiles: ["personal"] },
+      ],
+      hooks: [
+        { name: "shared-hook", stage: "post-repos", cmd: "x", interactive: false },
+        { name: "work-hook", stage: "post-repos", cmd: "x", interactive: false, profiles: ["work"] },
+      ],
+    });
+    const p = buildPlan(m, {
+      homeDir: home,
+      dotfilesRepo: home,
+      platform: "win32",
+      activeProfile: { profile: "work", source: "binding" },
+    });
+    assert.deepEqual(p.apps.map((a) => a.id), ["Shared", "Work"]);
+    assert.deepEqual(p.repos.map((r) => r.name), ["shared", "work"]);
+    assert.deepEqual(p.hooks.map((h) => h.name), ["shared-hook", "work-hook"]);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("buildPlan: excludes profile-scoped items when no active profile", () => {
+  const home = mkdtempSync(join(tmpdir(), "marshal-plan-"));
+  try {
+    const m = makeManifest({
+      profiles: ["work"],
+      apps: [{ id: "Shared" }, { id: "Work", profiles: ["work"] }],
+      repos: [{ name: "shared", url: "u" }, { name: "work", url: "u", profiles: ["work"] }],
+    });
+    const p = buildPlan(m, { homeDir: home, dotfilesRepo: home, platform: "win32" });
+    assert.deepEqual(p.apps.map((a) => a.id), ["Shared"]);
+    assert.deepEqual(p.repos.map((r) => r.name), ["shared"]);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

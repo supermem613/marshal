@@ -6,20 +6,21 @@ import { makeContext, makeDotfilesRepo, stubInstalledRepo } from "../helpers.js"
 import { addAppCommand, addCommand, addHookCommand, removeCommand } from "../../src/commands/add.js";
 
 test("add: appends repo to manifest without syncing by default", async () => {
-  const df = makeDotfilesRepo({ version: 1, apps: [], repos: [] });
+  const df = makeDotfilesRepo({ version: 1, profiles: ["work"], apps: [], repos: [] });
   const t = makeContext({ preBoundTo: df.dir, promptAnswers: [true] });
   try {
     const code = await addCommand(
       t.ctx,
       "https://github.com/me/newtool.git",
       undefined,
-      { yes: true },
+      { yes: true, profiles: ["work"] },
     );
     assert.equal(code, 0);
     const m = JSON.parse(readFileSync(join(df.dir, "marshal.json"), "utf8"));
     assert.equal(m.repos.length, 1);
     assert.equal(m.repos[0].name, "newtool");
     assert.equal(m.repos[0].url, "https://github.com/me/newtool.git");
+    assert.deepEqual(m.repos[0].profiles, ["work"]);
     assert.equal(t.runner.calls.length, 3);
     assert.ok(t.runner.calls[0].command.startsWith("git add"));
     assert.ok(t.runner.calls[1].command.startsWith("git commit"));
@@ -99,13 +100,13 @@ test("add: confirmation declined aborts cleanly", async () => {
 });
 
 test("add-app: appends app to manifest without syncing by default", async () => {
-  const df = makeDotfilesRepo({ version: 1, apps: [], repos: [] });
+  const df = makeDotfilesRepo({ version: 1, profiles: ["work"], apps: [], repos: [] });
   const t = makeContext({ preBoundTo: df.dir });
   try {
-    const code = await addAppCommand(t.ctx, "Git.Git", { yes: true, platforms: ["win32"] });
+    const code = await addAppCommand(t.ctx, "Git.Git", { yes: true, platforms: ["win32"], profiles: ["work"] });
     assert.equal(code, 0);
     const m = JSON.parse(readFileSync(join(df.dir, "marshal.json"), "utf8"));
-    assert.deepEqual(m.apps, [{ id: "Git.Git", platforms: ["win32"] }]);
+    assert.deepEqual(m.apps, [{ id: "Git.Git", platforms: ["win32"], profiles: ["work"] }]);
     assert.equal(t.runner.calls.length, 3);
     assert.ok(t.runner.calls[0].command.startsWith("git add"));
   } finally {
@@ -127,7 +128,7 @@ test("add-app: rejects duplicate app id", async () => {
 });
 
 test("add-hook: appends hook to manifest without syncing by default", async () => {
-  const df = makeDotfilesRepo({ version: 1, apps: [], repos: [], hooks: [] });
+  const df = makeDotfilesRepo({ version: 1, profiles: ["work"], apps: [], repos: [], hooks: [] });
   const t = makeContext({ preBoundTo: df.dir });
   try {
     const code = await addHookCommand(t.ctx, "config-sync", {
@@ -135,6 +136,7 @@ test("add-hook: appends hook to manifest without syncing by default", async () =
       cmd: "configsync sync",
       interactive: true,
       platforms: ["win32"],
+      profiles: ["work"],
     });
     assert.equal(code, 0);
     const m = JSON.parse(readFileSync(join(df.dir, "marshal.json"), "utf8"));
@@ -144,6 +146,7 @@ test("add-hook: appends hook to manifest without syncing by default", async () =
       cmd: "configsync sync",
       interactive: true,
       platforms: ["win32"],
+      profiles: ["work"],
     }]);
     assert.equal(t.runner.calls.length, 3);
     assert.ok(t.runner.calls[0].command.startsWith("git add"));

@@ -21,6 +21,7 @@ export interface AddOptions {
   update_cmd?: string;
   install_cwd?: string;
   platforms?: string[];
+  profiles?: string[];
   yes?: boolean;
   sync?: boolean;
   noSync?: boolean;
@@ -57,6 +58,7 @@ export async function addCommand(
     ...(platforms && platforms.length > 0
       ? { platforms }
       : {}),
+    ...(opts.profiles && opts.profiles.length > 0 ? { profiles: opts.profiles } : {}),
   };
   const next: Manifest = {
     ...manifest,
@@ -89,6 +91,7 @@ export async function addCommand(
 
 export interface AddAppOptions {
   platforms?: string[];
+  profiles?: string[];
   yes?: boolean;
   sync?: boolean;
 }
@@ -115,6 +118,7 @@ export async function addAppCommand(
   const newApp: App = {
     id,
     ...(platforms && platforms.length > 0 ? { platforms } : {}),
+    ...(opts.profiles && opts.profiles.length > 0 ? { profiles: opts.profiles } : {}),
   };
   const next: Manifest = {
     ...manifest,
@@ -149,6 +153,7 @@ export interface AddHookOptions {
   cmd: string;
   cwd?: string;
   platforms?: string[];
+  profiles?: string[];
   interactive?: boolean;
   yes?: boolean;
   sync?: boolean;
@@ -184,6 +189,7 @@ export async function addHookCommand(
     interactive: opts.interactive ?? false,
     ...(opts.cwd ? { cwd: opts.cwd } : {}),
     ...(platforms && platforms.length > 0 ? { platforms } : {}),
+    ...(opts.profiles && opts.profiles.length > 0 ? { profiles: opts.profiles } : {}),
   };
   const next: Manifest = {
     ...manifest,
