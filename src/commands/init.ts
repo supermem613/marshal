@@ -4,6 +4,7 @@ import { MarshalContext } from "../context.js";
 import { MANIFEST_FILENAME, validateManifest } from "../manifest.js";
 import { writeBinding } from "../binding.js";
 import { resolvePath } from "../paths.js";
+import { pullDotfilesRepo } from "../dotfiles-git.js";
 
 export interface InitOptions {
   bind?: boolean; // default true: also bind after creating
@@ -17,6 +18,9 @@ export async function initCommand(ctx: MarshalContext, opts: InitOptions = {}): 
   const path = join(cwd, MANIFEST_FILENAME);
   if (existsSync(path)) {
     ctx.log.error(`${MANIFEST_FILENAME} already exists at ${cwd}`);
+    return 1;
+  }
+  if (!await pullDotfilesRepo(ctx, cwd)) {
     return 1;
   }
   const seed = { version: 1, apps: [], repos: [] };

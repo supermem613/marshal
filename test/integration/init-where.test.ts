@@ -20,6 +20,22 @@ test("init: creates marshal.json and binds", async () => {
     assert.deepEqual(m.repos, []);
     const b = readBinding(t.ctx.homeDir);
     assert.equal(b?.dotfilesRepo, t.ctx.cwd);
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["git pull --ff-only"]);
+    assert.equal(t.runner.calls[0].opts.cwd, t.ctx.cwd);
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("init: stops before writing when dotfiles pull fails", async () => {
+  const t = makeContext();
+  t.runner.respond("git pull", { fail: true, code: 1, stderr: "diverged\n" });
+  try {
+    const code = await initCommand(t.ctx);
+    assert.equal(code, 1);
+    assert.equal(existsSync(join(t.ctx.cwd, "marshal.json")), false);
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["git pull --ff-only"]);
+    assert.ok(t.log.captured.some((l) => l.includes("dotfiles pull failed")));
   } finally {
     t.cleanup();
   }
@@ -53,6 +69,7 @@ test("where: prints bound dotfiles path", async () => {
   try {
     await initCommand(t.ctx);
     t.log.captured.length = 0;
+    t.runner.reset();
     const code = await whereCommand(t.ctx);
     assert.equal(code, 0);
     assert.ok(t.log.captured.some((l) => l.includes(t.ctx.cwd)));

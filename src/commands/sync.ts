@@ -4,8 +4,8 @@ import { readManifest, ManifestError } from "../manifest.js";
 import { buildPlan, unknownRepoNames } from "../plan.js";
 import { renderPlan, renderResults } from "../render.js";
 import { applyPlan } from "../apply.js";
-import { ProcessError } from "../runners/types.js";
 import { ProfileError, requireProfileForScopedItems, resolveActiveProfile } from "../profile.js";
+import { pullDotfilesRepo } from "../dotfiles-git.js";
 
 export interface SyncOptions {
   yes?: boolean;
@@ -28,17 +28,9 @@ export async function syncCommand(ctx: MarshalContext, opts: SyncOptions): Promi
     throw err;
   }
 
-  // Pull latest dotfiles before reading manifest.
   const dotfiles = binding.dotfilesRepo;
-  ctx.log.info(`→ (${dotfiles}) git pull --ff-only`);
-  try {
-    await ctx.runner.exec("git pull --ff-only", { cwd: dotfiles, inherit: false });
-  } catch (err) {
-    if (err instanceof ProcessError) {
-      ctx.log.error(`dotfiles pull failed: ${err.result.stderr || err.result.stdout}`.trim());
-      return 1;
-    }
-    throw err;
+  if (!await pullDotfilesRepo(ctx, dotfiles)) {
+    return 1;
   }
 
   let manifest;

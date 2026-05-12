@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { isAbsolute, join, normalize } from "node:path";
 import { MarshalContext } from "../context.js";
 import { requireBinding, BindingError } from "../binding.js";
@@ -15,6 +15,7 @@ import {
 } from "../manifest.js";
 import { syncCommand } from "./sync.js";
 import { Platform, SUPPORTED_PLATFORMS } from "../platform.js";
+import { pullDotfilesRepo } from "../dotfiles-git.js";
 
 export interface AddOptions {
   install_cmd?: string;
@@ -33,7 +34,7 @@ export async function addCommand(
   name: string | undefined,
   opts: AddOptions,
 ): Promise<number> {
-  const loaded = loadBoundManifest(ctx);
+  const loaded = await loadBoundManifest(ctx);
   if ("code" in loaded) {
     return loaded.code;
   }
@@ -101,7 +102,7 @@ export async function addAppCommand(
   id: string,
   opts: AddAppOptions,
 ): Promise<number> {
-  const loaded = loadBoundManifest(ctx);
+  const loaded = await loadBoundManifest(ctx);
   if ("code" in loaded) {
     return loaded.code;
   }
@@ -164,7 +165,7 @@ export async function addHookCommand(
   name: string,
   opts: AddHookOptions,
 ): Promise<number> {
-  const loaded = loadBoundManifest(ctx);
+  const loaded = await loadBoundManifest(ctx);
   if ("code" in loaded) {
     return loaded.code;
   }
@@ -232,27 +233,11 @@ export async function removeCommand(
   name: string,
   opts: RemoveOptions,
 ): Promise<number> {
-  let bound: string;
-  try {
-    bound = requireBinding(ctx.homeDir).dotfilesRepo;
-  } catch (err) {
-    if (err instanceof BindingError) {
-      ctx.log.error(err.message);
-      return 1;
-    }
-    throw err;
+  const loaded = await loadBoundManifest(ctx);
+  if ("code" in loaded) {
+    return loaded.code;
   }
-
-  let manifest;
-  try {
-    manifest = readManifest(bound);
-  } catch (err) {
-    if (err instanceof ManifestError) {
-      ctx.log.error(err.message);
-      return 1;
-    }
-    throw err;
-  }
+  const { bound, manifest } = loaded;
 
   const idx = manifest.repos.findIndex((r) => r.name === name);
   if (idx === -1) {
@@ -296,7 +281,7 @@ export async function removeCommand(
   return 0;
 }
 
-function loadBoundManifest(ctx: MarshalContext): { bound: string; manifest: Manifest } | { code: number } {
+async function loadBoundManifest(ctx: MarshalContext): Promise<{ bound: string; manifest: Manifest } | { code: number }> {
   let bound: string;
   try {
     bound = requireBinding(ctx.homeDir).dotfilesRepo;
@@ -306,6 +291,10 @@ function loadBoundManifest(ctx: MarshalContext): { bound: string; manifest: Mani
       return { code: 1 };
     }
     throw err;
+  }
+
+  if (!await pullDotfilesRepo(ctx, bound)) {
+    return { code: 1 };
   }
 
   try {
@@ -371,5 +360,3 @@ async function commitAndPush(ctx: MarshalContext, dotfilesRepo: string, message:
     ctx.log.warn(`Committed but failed to push: ${detail.trim().split("\n")[0]}`);
   }
 }
-
-void readFileSync;

@@ -2,6 +2,7 @@ import { BindingError, readBinding, requireBinding, writeBindingProfile } from "
 import { MarshalContext } from "../context.js";
 import { ManifestError, readManifest } from "../manifest.js";
 import { ProfileError, validateProfileName } from "../profile.js";
+import { pullDotfilesRepo } from "../dotfiles-git.js";
 
 export type ProfileAction = "list" | "get" | "set" | "clear";
 
@@ -42,7 +43,7 @@ async function profileGet(ctx: MarshalContext): Promise<number> {
 }
 
 async function profileList(ctx: MarshalContext): Promise<number> {
-  const loaded = loadBindingAndManifest(ctx);
+  const loaded = await loadBindingAndManifest(ctx);
   if ("code" in loaded) {
     return loaded.code;
   }
@@ -59,7 +60,7 @@ async function profileList(ctx: MarshalContext): Promise<number> {
 }
 
 async function profileSet(ctx: MarshalContext, profile: string): Promise<number> {
-  const loaded = loadBindingAndManifest(ctx);
+  const loaded = await loadBindingAndManifest(ctx);
   if ("code" in loaded) {
     return loaded.code;
   }
@@ -78,6 +79,19 @@ async function profileSet(ctx: MarshalContext, profile: string): Promise<number>
 }
 
 async function profileClear(ctx: MarshalContext): Promise<number> {
+  let binding;
+  try {
+    binding = requireBinding(ctx.homeDir);
+  } catch (err) {
+    if (err instanceof BindingError) {
+      ctx.log.error(err.message);
+      return 1;
+    }
+    throw err;
+  }
+  if (!await pullDotfilesRepo(ctx, binding.dotfilesRepo)) {
+    return 1;
+  }
   try {
     writeBindingProfile(null, ctx.homeDir);
   } catch (err) {
@@ -91,9 +105,10 @@ async function profileClear(ctx: MarshalContext): Promise<number> {
   return 0;
 }
 
-function loadBindingAndManifest(ctx: MarshalContext):
+async function loadBindingAndManifest(ctx: MarshalContext): Promise<
   | { binding: ReturnType<typeof requireBinding>; manifest: ReturnType<typeof readManifest> }
-  | { code: number } {
+  | { code: number }
+> {
   let binding;
   try {
     binding = requireBinding(ctx.homeDir);
@@ -103,6 +118,9 @@ function loadBindingAndManifest(ctx: MarshalContext):
       return { code: 1 };
     }
     throw err;
+  }
+  if (!await pullDotfilesRepo(ctx, binding.dotfilesRepo)) {
+    return { code: 1 };
   }
   try {
     return { binding, manifest: readManifest(binding.dotfilesRepo) };
