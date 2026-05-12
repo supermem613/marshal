@@ -67,6 +67,22 @@ test("update: skips npm install and npm run build when git pull is already up to
   });
 });
 
+test("update: skips npm install and npm run build for legacy git no-change output", async () => {
+  withSrcDir(async (srcDir) => {
+    mkdirSync(join(srcDir, ".git"), { recursive: true });
+    writeFileSync(join(srcDir, "package.json"), "{}");
+    const t = makeContext({ marshalSourceDir: srcDir });
+    t.runner.respond("git pull", { code: 0, stdout: "Already up-to-date.\n" });
+    try {
+      const code = await updateCommand(t.ctx);
+      assert.equal(code, 0);
+      assert.deepEqual(t.runner.calls.map((c) => c.command), ["git pull --ff-only"]);
+    } finally {
+      t.cleanup();
+    }
+  });
+});
+
 test("update: aborts on first failure with non-zero exit", async () => {
   withSrcDir(async (srcDir) => {
     const t = makeContext({ marshalSourceDir: srcDir });
