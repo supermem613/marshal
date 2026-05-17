@@ -110,10 +110,15 @@ test("list: prints apps and repos with platform/cwd/update info", async () => {
     assert.ok(text.includes("Git.Git"));
     assert.ok(text.includes("tool-suite"));
     assert.ok(text.includes("cwd: cli"));
-    assert.ok(text.includes("update=tool-suite update"));
-    assert.ok(text.includes("[win32]"));
+    assert.ok(text.includes("install: x"));
+    assert.ok(text.includes("update:  tool-suite update"));
+    assert.ok(text.includes("platforms: win32"));
     assert.ok(text.includes("hooks (1)"));
     assert.ok(text.includes("config-sync"));
+    assert.ok(text.includes("command: configsync sync"));
+    assert.ok(!text.includes("install: x  update:"));
+    assert.ok(text.includes("┌─ marshal manifest"));
+    assert.ok(text.includes("Legend:"));
   } finally {
     t.cleanup();
     df.cleanup();
@@ -133,11 +138,12 @@ test("list: prints declared and item profiles", async () => {
     const code = await listCommand(t.ctx, {});
     assert.equal(code, 0);
     const text = t.log.captured.join("\n");
-    assert.ok(text.includes("Profile:   work (binding)"));
-    assert.ok(text.includes("profiles (1): work"));
-    assert.ok(text.includes("Git.Git <work>"));
-    assert.ok(text.includes("tool-suite") && text.includes("<work>"));
-    assert.ok(text.includes("config-sync") && text.includes("<work>"));
+    assert.ok(text.includes("profile:  work (binding)"));
+    assert.ok(text.includes("profiles (1)"));
+    assert.ok(text.includes("work") && text.includes("1 apps, 1 repos, 1 hooks"));
+    assert.ok(text.includes("Git.Git") && text.includes("scope: work"));
+    assert.ok(text.includes("tool-suite") && text.includes("scope: work"));
+    assert.ok(text.includes("config-sync") && text.includes("scope: work"));
   } finally {
     t.cleanup();
     df.cleanup();

@@ -14,7 +14,7 @@ import { whereCommand } from "./commands/where.js";
 import { cdCommand, homeCommand } from "./commands/cd.js";
 import { updateCommand } from "./commands/update.js";
 import { initCommand } from "./commands/init.js";
-import { addAppCommand, addCommand, addHookCommand, removeCommand } from "./commands/add.js";
+import { addAppsCommand, addHooksCommand, addReposCommand, removeItemsCommand } from "./commands/add.js";
 import { profileCommand } from "./commands/profile.js";
 
 const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
@@ -83,11 +83,112 @@ program
     process.exit(await listCommand(ctx, opts));
   });
 
-program
-  .command("profile [action] [name]")
-  .description("Show, list, set, or clear the machine-local active profile")
-  .action(async (action, name) => {
-    process.exit(await profileCommand(ctx, action, name));
+const profile = program
+  .command("profile")
+  .description("Manage declared profiles, active profile selection, and item scopes")
+  .summary("manage profiles and item scopes")
+  .addHelpText("after", `
+
+Examples:
+  marshal profile list
+  marshal profile set work-laptop
+  marshal profile add work-laptop -y
+  marshal profile scope app work-laptop Git.Git VSCode -y
+  marshal profile scope repo work-laptop forge marshal -y
+  marshal profile unscope hook work-laptop config-sync prompt-sync -y
+  marshal profile remove work-laptop -y
+
+Scope kinds:
+  app     app id from apps[]
+  repo    repo name from repos[]
+  hook    hook name from hooks[]
+`)
+  .action(async () => {
+    process.exit(await profileCommand(ctx, "get"));
+  });
+
+profile
+  .command("list")
+  .description("List declared manifest profiles and mark the active local profile")
+  .action(async () => {
+    process.exit(await profileCommand(ctx, "list"));
+  });
+
+profile
+  .command("get")
+  .description("Print the machine-local active profile from ~/.marshal.json")
+  .action(async () => {
+    process.exit(await profileCommand(ctx, "get"));
+  });
+
+profile
+  .command("set <name>")
+  .description("Set the machine-local active profile after validating it is declared")
+  .action(async (name) => {
+    process.exit(await profileCommand(ctx, "set", name));
+  });
+
+profile
+  .command("clear")
+  .description("Clear the machine-local active profile without changing marshal.json")
+  .action(async () => {
+    process.exit(await profileCommand(ctx, "clear"));
+  });
+
+profile
+  .command("add <name>")
+  .description("Declare a new top-level profile in marshal.json")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .action(async (name, opts) => {
+    process.exit(await profileCommand(ctx, "add", name, undefined, undefined, opts));
+  });
+
+profile
+  .command("remove <name>")
+  .description("Remove an unused declared profile from marshal.json")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .action(async (name, opts) => {
+    process.exit(await profileCommand(ctx, "remove", name, undefined, undefined, opts));
+  });
+
+profile
+  .command("scope <kind> <profile> <items...>")
+  .description("Scope one or more existing apps, repos, or hooks to a declared profile")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .addHelpText("after", `
+
+Arguments:
+  kind     app, repo, or hook
+  profile  declared profile name
+  items    one or more app ids, repo names, or hook names
+
+Examples:
+  marshal profile scope app work-laptop Git.Git OpenJS.NodeJS.LTS -y
+  marshal profile scope repo work-laptop forge marshal -y
+  marshal profile scope hook work-laptop config-sync prompt-sync -y
+`)
+  .action(async (kind, name, items, opts) => {
+    process.exit(await profileCommand(ctx, "scope", kind, items, name, opts));
+  });
+
+profile
+  .command("unscope <kind> <profile> <items...>")
+  .description("Remove a profile from one or more existing app, repo, or hook scopes")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .addHelpText("after", `
+
+Arguments:
+  kind     app, repo, or hook
+  profile  declared profile name
+  items    one or more app ids, repo names, or hook names
+
+Examples:
+  marshal profile unscope app work-laptop Git.Git OpenJS.NodeJS.LTS -y
+  marshal profile unscope repo work-laptop forge marshal -y
+  marshal profile unscope hook work-laptop config-sync prompt-sync -y
+`)
+  .action(async (kind, name, items, opts) => {
+    process.exit(await profileCommand(ctx, "unscope", kind, items, name, opts));
   });
 
 program
@@ -119,8 +220,9 @@ program
   });
 
 program
-  .command("add <url> [name]")
-  .description("Add a tool repo to the manifest. Run `marshal sync` to apply, or pass --sync.")
+  .command("add <urls...>")
+  .description("Add one or more tool repos to the manifest. Run `marshal sync` to apply, or pass --sync.")
+  .option("--name <name>", "Manifest repo name. Only valid when adding one URL.")
   .option("--install-cmd <cmd>", "Install command to run after clone/pull")
   .option("--update-cmd <cmd>", "Update command (default: rerun install_cmd after git pull)")
   .option("--install-cwd <subdir>", "Subdirectory inside the repo where install runs")
@@ -129,24 +231,46 @@ program
   .option("--sync", "Also run sync after writing the manifest")
   .addOption(new Option("--no-sync").hideHelp())
   .option("-y, --yes", "Skip confirmation prompt")
-  .action(async (url, name, opts) => {
-    process.exit(await addCommand(ctx, url, name, opts));
+  .addHelpText("after", `
+
+Examples:
+  marshal add https://github.com/me/tool.git -y
+  marshal add https://github.com/me/a.git https://github.com/me/b.git -y
+  marshal add https://github.com/me/tool.git --name tool-alpha --profiles work-laptop -y
+
+Batch notes:
+  --name is only valid with one URL. For multiple URLs, repo names are derived from each URL.
+  Shared flags such as --platforms, --profiles, and --install-cmd apply to every added repo.
+`)
+  .action(async (urls, opts) => {
+    if (opts.name && urls.length !== 1) {
+      ctx.log.error("--name can only be used when adding one repo URL.");
+      process.exit(2);
+    }
+    process.exit(await addReposCommand(ctx, urls.map((url: string) => ({ url, name: opts.name })), opts));
   });
 
 program
-  .command("add-app <id>")
-  .description("Add a prerequisite app to the manifest. Run `marshal sync` to apply, or pass --sync.")
+  .command("add-app <ids...>")
+  .description("Add one or more prerequisite apps to the manifest. Run `marshal sync` to apply, or pass --sync.")
   .option("--platforms <list>", "Comma-separated platform list (win32,darwin,linux)", (v) => v.split(",").map((s) => s.trim()))
   .option("--profiles <list>", "Comma-separated profile list declared in marshal.json", (v) => v.split(",").map((s) => s.trim()))
   .option("--sync", "Also run sync after writing the manifest")
   .option("-y, --yes", "Skip confirmation prompt")
-  .action(async (id, opts) => {
-    process.exit(await addAppCommand(ctx, id, opts));
+  .addHelpText("after", `
+
+Examples:
+  marshal add-app Git.Git -y
+  marshal add-app Git.Git OpenJS.NodeJS.LTS dandavison.delta -y
+  marshal add-app Corp.VPN Corp.DevicePortal --profiles work-laptop -y
+`)
+  .action(async (ids, opts) => {
+    process.exit(await addAppsCommand(ctx, ids, opts));
   });
 
 program
-  .command("add-hook <name>")
-  .description("Add a sync hook to the manifest. Run `marshal sync` to apply, or pass --sync.")
+  .command("add-hook <names...>")
+  .description("Add one or more sync hooks to the manifest. Run `marshal sync` to apply, or pass --sync.")
   .requiredOption("--cmd <cmd>", "Shell command to run during sync")
   .option("--cwd <path>", "Relative path under the bound dotfiles repo where the hook runs")
   .option("--interactive", "Run the hook with a real terminal attached")
@@ -154,17 +278,71 @@ program
   .option("--profiles <list>", "Comma-separated profile list declared in marshal.json", (v) => v.split(",").map((s) => s.trim()))
   .option("--sync", "Also run sync after writing the manifest")
   .option("-y, --yes", "Skip confirmation prompt")
-  .action(async (name, opts) => {
-    process.exit(await addHookCommand(ctx, name, opts));
+  .addHelpText("after", `
+
+Examples:
+  marshal add-hook config-sync --cmd "configsync sync" --interactive -y
+  marshal add-hook config-sync prompt-sync --cmd "npm run sync" --profiles work-laptop -y
+
+Batch notes:
+  The same --cmd, --cwd, --interactive, --platforms, and --profiles values apply to every added hook.
+`)
+  .action(async (names, opts) => {
+    process.exit(await addHooksCommand(ctx, names, opts));
   });
 
 program
-  .command("remove <name>")
-  .description("Remove a tool repo from the manifest (and delete its cloned directory)")
+  .command("remove [repos...]")
+  .description("Remove one or more tool repos from the manifest")
   .option("--keep-files", "Do not delete the cloned repo directory")
   .option("-y, --yes", "Skip confirmation prompt")
-  .action(async (name, opts) => {
-    process.exit(await removeCommand(ctx, name, { yes: opts.yes, deleteFiles: !opts.keepFiles }));
+  .addHelpText("after", `
+
+Examples:
+  marshal remove tool-alpha -y
+  marshal remove tool-alpha tool-beta --keep-files -y
+
+Batch notes:
+  Positional values are repo names.
+  Repo removals delete cloned repo directories unless --keep-files is passed.
+  Use remove-app for apps and remove-hook for hooks.
+`)
+  .action(async (repos, opts) => {
+    process.exit(await removeItemsCommand(ctx, {
+      repos,
+    }, { yes: opts.yes, deleteFiles: !opts.keepFiles }));
+  });
+
+program
+  .command("remove-app <ids...>")
+  .description("Remove one or more prerequisite apps from the manifest")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .addHelpText("after", `
+
+Examples:
+  marshal remove-app Git.Git -y
+  marshal remove-app Git.Git OpenJS.NodeJS.LTS dandavison.delta -y
+`)
+  .action(async (ids, opts) => {
+    process.exit(await removeItemsCommand(ctx, {
+      apps: ids,
+    }, { yes: opts.yes, deleteFiles: false }));
+  });
+
+program
+  .command("remove-hook <names...>")
+  .description("Remove one or more sync hooks from the manifest")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .addHelpText("after", `
+
+Examples:
+  marshal remove-hook config-sync -y
+  marshal remove-hook config-sync prompt-sync -y
+`)
+  .action(async (names, opts) => {
+    process.exit(await removeItemsCommand(ctx, {
+      hooks: names,
+    }, { yes: opts.yes, deleteFiles: false }));
   });
 
 // Bare `marshal` (no args) prints version + full help. Matches the

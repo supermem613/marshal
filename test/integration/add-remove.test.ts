@@ -34,6 +34,26 @@ test("add: appends repo to manifest without syncing by default", async () => {
   }
 });
 
+test("add: appends multiple repos to manifest in one command", async () => {
+  const df = makeDotfilesRepo({ version: 1, profiles: ["work"], apps: [], repos: [] });
+  const t = makeContext({ preBoundTo: df.dir });
+  try {
+    const code = await addCommand(
+      t.ctx,
+      ["https://github.com/me/one.git", "https://github.com/me/two.git"],
+      undefined,
+      { yes: true, profiles: ["work"] },
+    );
+    assert.equal(code, 0);
+    const m = JSON.parse(readFileSync(join(df.dir, "marshal.json"), "utf8"));
+    assert.deepEqual(m.repos.map((r: { name: string }) => r.name), ["one", "two"]);
+    assert.deepEqual(m.repos.map((r: { profiles: string[] }) => r.profiles), [["work"], ["work"]]);
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
 test("add: rejects duplicate repo name", async () => {
   const df = makeDotfilesRepo({
     version: 1,
@@ -135,6 +155,23 @@ test("add-app: appends app to manifest without syncing by default", async () => 
   }
 });
 
+test("add-app: appends multiple apps to manifest in one command", async () => {
+  const df = makeDotfilesRepo({ version: 1, profiles: ["work"], apps: [], repos: [] });
+  const t = makeContext({ preBoundTo: df.dir });
+  try {
+    const code = await addAppCommand(t.ctx, ["Git.Git", "OpenJS.NodeJS.LTS"], { yes: true, profiles: ["work"] });
+    assert.equal(code, 0);
+    const m = JSON.parse(readFileSync(join(df.dir, "marshal.json"), "utf8"));
+    assert.deepEqual(m.apps, [
+      { id: "Git.Git", profiles: ["work"] },
+      { id: "OpenJS.NodeJS.LTS", profiles: ["work"] },
+    ]);
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
 test("add-app: rejects duplicate app id", async () => {
   const df = makeDotfilesRepo({ version: 1, apps: [{ id: "Git.Git" }], repos: [] });
   const t = makeContext({ preBoundTo: df.dir });
@@ -171,6 +208,25 @@ test("add-hook: appends hook to manifest without syncing by default", async () =
     assert.equal(t.runner.calls.length, 4);
     assert.equal(t.runner.calls[0].command, "git pull --ff-only");
     assert.ok(t.runner.calls[1].command.startsWith("git add"));
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("add-hook: appends multiple hooks to manifest in one command", async () => {
+  const df = makeDotfilesRepo({ version: 1, profiles: ["work"], apps: [], repos: [], hooks: [] });
+  const t = makeContext({ preBoundTo: df.dir });
+  try {
+    const code = await addHookCommand(t.ctx, ["config-sync", "prompt-sync"], {
+      yes: true,
+      cmd: "npm run sync",
+      profiles: ["work"],
+    });
+    assert.equal(code, 0);
+    const m = JSON.parse(readFileSync(join(df.dir, "marshal.json"), "utf8"));
+    assert.deepEqual(m.hooks.map((h: { name: string }) => h.name), ["config-sync", "prompt-sync"]);
+    assert.deepEqual(m.hooks.map((h: { profiles: string[] }) => h.profiles), [["work"], ["work"]]);
   } finally {
     t.cleanup();
     df.cleanup();
@@ -220,6 +276,55 @@ test("remove: deletes manifest entry and cloned dir by default", async () => {
     assert.equal(t.runner.calls[0].command, "git pull --ff-only");
     assert.equal(t.runner.calls[0].opts.cwd, df.dir);
     assert.equal(existsSync(cloned), false);
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("remove: deletes multiple manifest repos and cloned dirs in one command", async () => {
+  const df = makeDotfilesRepo({
+    version: 1,
+    repos: [
+      { name: "tool-alpha", url: "u1" },
+      { name: "tool-beta", url: "u2" },
+    ],
+  });
+  const t = makeContext({ preBoundTo: df.dir });
+  const alpha = stubInstalledRepo(join(t.homeDir, "repos"), "tool-alpha");
+  const beta = stubInstalledRepo(join(t.homeDir, "repos"), "tool-beta");
+  try {
+    const code = await removeCommand(t.ctx, ["tool-alpha", "tool-beta"], { yes: true });
+    assert.equal(code, 0);
+    const m = JSON.parse(readFileSync(join(df.dir, "marshal.json"), "utf8"));
+    assert.equal(m.repos.length, 0);
+    assert.equal(existsSync(alpha), false);
+    assert.equal(existsSync(beta), false);
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("remove: deletes multiple apps and hooks by kind-specific targets", async () => {
+  const df = makeDotfilesRepo({
+    version: 1,
+    apps: [{ id: "Git.Git" }, { id: "OpenJS.NodeJS.LTS" }],
+    repos: [],
+    hooks: [
+      { name: "config-sync", stage: "post-repos", cmd: "configsync sync", interactive: false },
+      { name: "prompt-sync", stage: "post-repos", cmd: "prompt sync", interactive: false },
+    ],
+  });
+  const t = makeContext({ preBoundTo: df.dir });
+  try {
+    const appCode = await removeCommand(t.ctx, [], { yes: true, apps: ["Git.Git", "OpenJS.NodeJS.LTS"] });
+    const hookCode = await removeCommand(t.ctx, [], { yes: true, hooks: ["config-sync", "prompt-sync"] });
+    assert.equal(appCode, 0);
+    assert.equal(hookCode, 0);
+    const m = JSON.parse(readFileSync(join(df.dir, "marshal.json"), "utf8"));
+    assert.deepEqual(m.apps, []);
+    assert.deepEqual(m.hooks, []);
   } finally {
     t.cleanup();
     df.cleanup();

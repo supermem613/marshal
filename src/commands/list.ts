@@ -1,8 +1,9 @@
+import chalk from "chalk";
 import { MarshalContext } from "../context.js";
 import { requireBinding, BindingError } from "../binding.js";
-import { readManifest, ManifestError } from "../manifest.js";
+import { App, Hook, readManifest, Manifest, ManifestError, Repo } from "../manifest.js";
 import { buildPlan } from "../plan.js";
-import { formatActiveProfile, ProfileError, resolveActiveProfile } from "../profile.js";
+import { formatActiveProfile, profileApplies, ProfileError, resolveActiveProfile } from "../profile.js";
 
 export interface ListOptions {
   json?: boolean;
@@ -70,37 +71,116 @@ export async function listCommand(ctx: MarshalContext, opts: ListOptions): Promi
     return 0;
   }
 
-  ctx.log.info(`Bound:     ${binding.dotfilesRepo}`);
-  ctx.log.info(`Platform:  ${ctx.platform}`);
-  ctx.log.info(`Profile:   ${formatActiveProfile(activeProfile)}`);
-  ctx.log.info(`reposPath: ${plan.reposPath}`);
-  if (manifest.profiles.length > 0) {
-    ctx.log.info(`profiles (${manifest.profiles.length}): ${manifest.profiles.join(", ")}`);
-  }
+  const planAppIds = new Set(plan.apps.map((a) => a.id));
+  const planRepoNames = new Set(plan.repos.map((r) => r.name));
+  const planHookNames = new Set(plan.hooks.map((h) => h.name));
+
   ctx.log.info("");
-  ctx.log.info(`apps (${manifest.apps.length}):`);
-  for (const a of manifest.apps) {
-    const platforms = a.platforms ? ` [${a.platforms.join(",")}]` : "";
-    const profiles = a.profiles ? ` <${a.profiles.join(",")}>` : "";
-    ctx.log.info(`  ${a.id}${platforms}${profiles}`);
-  }
+  ctx.log.info(chalk.bold.cyan("  ┌─ marshal manifest"));
+  ctx.log.dim(`  │  bound:    ${binding.dotfilesRepo}`);
+  ctx.log.dim(`  │  platform: ${ctx.platform}`);
+  ctx.log.dim(`  │  profile:  ${formatActiveProfile(activeProfile)}`);
+  ctx.log.dim(`  │  repos:    ${plan.reposPath}`);
+  renderProfiles(ctx, manifest, activeProfile.profile);
+  renderApps(ctx, manifest.apps, planAppIds);
+  renderRepos(ctx, manifest.repos, planRepoNames);
+  renderHooks(ctx, manifest.hooks, planHookNames);
+  ctx.log.dim("  │");
+  ctx.log.info(chalk.cyan(`  └─ ${manifest.apps.length} apps, ${manifest.repos.length} repos, ${manifest.hooks.length} hooks`));
   ctx.log.info("");
-  ctx.log.info(`repos (${manifest.repos.length}):`);
-  for (const r of manifest.repos) {
-    const platforms = r.platforms ? ` [${r.platforms.join(",")}]` : "";
-    const profiles = r.profiles ? ` <${r.profiles.join(",")}>` : "";
-    const cwd = r.install_cwd ? ` (cwd: ${r.install_cwd})` : "";
-    const update = r.update_cmd ? ` update=${r.update_cmd}` : "";
-    ctx.log.info(`  ${r.name.padEnd(20)} ${r.url}${platforms}${profiles}${cwd}${update}`);
-  }
-  ctx.log.info("");
-  ctx.log.info(`hooks (${manifest.hooks.length}):`);
-  for (const h of manifest.hooks) {
-    const platforms = h.platforms ? ` [${h.platforms.join(",")}]` : "";
-    const profiles = h.profiles ? ` <${h.profiles.join(",")}>` : "";
-    const cwd = h.cwd ? ` (cwd: ${h.cwd})` : "";
-    const mode = h.interactive ? " interactive" : "";
-    ctx.log.info(`  ${h.name.padEnd(20)} ${h.stage} ${h.cmd}${platforms}${profiles}${cwd}${mode}`);
-  }
+  ctx.log.dim(`  Legend: ${chalk.green("◉")} applies  ${chalk.dim("○")} skipped  scope: shared means every profile`);
   return 0;
+}
+
+function renderProfiles(ctx: MarshalContext, manifest: Manifest, activeProfile: string | null): void {
+  ctx.log.dim("  │");
+  ctx.log.info(chalk.bold(`  │  profiles (${manifest.profiles.length})`));
+  if (manifest.profiles.length === 0) {
+    ctx.log.dim("  │    (none declared)");
+    return;
+  }
+  for (const profile of manifest.profiles) {
+    const marker = profile === activeProfile ? chalk.green("◉") : chalk.dim("○");
+    const active = profile === activeProfile ? " active" : "";
+    const counts = profileCounts(manifest, profile);
+    ctx.log.info(`  │    ${marker} ${profile.padEnd(20)} ${counts}${active}`);
+  }
+}
+
+function renderApps(ctx: MarshalContext, apps: App[], planAppIds: Set<string>): void {
+  ctx.log.dim("  │");
+  ctx.log.info(chalk.bold(`  │  apps (${apps.length})`));
+  if (apps.length === 0) {
+    ctx.log.dim("  │    (none)");
+    return;
+  }
+  for (const app of apps) {
+    const applies = planAppIds.has(app.id);
+    ctx.log.info(`  │    ${indicator(applies)} ${app.id.padEnd(24)} ${scopeLabel(app.profiles)}${platformLabel(app.platforms)}`);
+  }
+}
+
+function renderRepos(ctx: MarshalContext, repos: Repo[], planRepoNames: Set<string>): void {
+  ctx.log.dim("  │");
+  ctx.log.info(chalk.bold(`  │  repos (${repos.length})`));
+  if (repos.length === 0) {
+    ctx.log.dim("  │    (none)");
+    return;
+  }
+  for (const repo of repos) {
+    const applies = planRepoNames.has(repo.name);
+    const metadata = [
+      scopeLabel(repo.profiles),
+      platformLabel(repo.platforms),
+      repo.install_cwd ? `cwd: ${repo.install_cwd}` : "",
+    ].filter(Boolean).join("  ");
+    ctx.log.info(`  │    ${indicator(applies)} ${repo.name.padEnd(24)} ${repo.url}`);
+    ctx.log.dim(`  │      ${metadata || "scope: shared"}`);
+    if (repo.install_cmd) {
+      ctx.log.dim(`  │      install: ${repo.install_cmd}`);
+    }
+    if (repo.update_cmd) {
+      ctx.log.dim(`  │      update:  ${repo.update_cmd}`);
+    }
+  }
+}
+
+function renderHooks(ctx: MarshalContext, hooks: Hook[], planHookNames: Set<string>): void {
+  ctx.log.dim("  │");
+  ctx.log.info(chalk.bold(`  │  hooks (${hooks.length})`));
+  if (hooks.length === 0) {
+    ctx.log.dim("  │    (none)");
+    return;
+  }
+  for (const hook of hooks) {
+    const applies = planHookNames.has(hook.name);
+    const metadata = [
+      scopeLabel(hook.profiles),
+      platformLabel(hook.platforms),
+      hook.cwd ? `cwd: ${hook.cwd}` : "",
+      hook.interactive ? "interactive" : "non-interactive",
+    ].filter(Boolean).join("  ");
+    ctx.log.info(`  │    ${indicator(applies)} ${hook.name.padEnd(24)} ${hook.stage}`);
+    ctx.log.dim(`  │      ${metadata}`);
+    ctx.log.dim(`  │      command: ${hook.cmd}`);
+  }
+}
+
+function indicator(applies: boolean): string {
+  return applies ? chalk.green("◉") : chalk.dim("○");
+}
+
+function scopeLabel(profiles: string[] | undefined): string {
+  return profiles && profiles.length > 0 ? `scope: ${profiles.join(", ")}` : "scope: shared";
+}
+
+function platformLabel(platforms: string[] | undefined): string {
+  return platforms && platforms.length > 0 ? `  platforms: ${platforms.join(", ")}` : "";
+}
+
+function profileCounts(manifest: Manifest, profile: string): string {
+  const apps = manifest.apps.filter((app) => profileApplies(app.profiles, profile)).length;
+  const repos = manifest.repos.filter((repo) => profileApplies(repo.profiles, profile)).length;
+  const hooks = manifest.hooks.filter((hook) => profileApplies(hook.profiles, profile)).length;
+  return `${apps} apps, ${repos} repos, ${hooks} hooks`;
 }

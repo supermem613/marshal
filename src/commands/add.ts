@@ -30,8 +30,19 @@ export interface AddOptions {
 
 export async function addCommand(
   ctx: MarshalContext,
-  url: string,
+  url: string | string[],
   name: string | undefined,
+  opts: AddOptions,
+): Promise<number> {
+  const entries = Array.isArray(url)
+    ? url.map((u) => ({ url: u }))
+    : [{ url, name }];
+  return addReposCommand(ctx, entries, opts);
+}
+
+export async function addReposCommand(
+  ctx: MarshalContext,
+  entries: Array<{ url: string; name?: string }>,
   opts: AddOptions,
 ): Promise<number> {
   const loaded = await loadBoundManifest(ctx);
@@ -40,9 +51,22 @@ export async function addCommand(
   }
   const { bound, manifest } = loaded;
 
-  const resolvedName = name ?? deriveName(url);
-  if (manifest.repos.some((r) => r.name === resolvedName)) {
-    ctx.log.error(`Repo "${resolvedName}" already in manifest.`);
+  if (entries.length === 0) {
+    ctx.log.error("No repos provided.");
+    return 2;
+  }
+  const resolved = entries.map((entry) => ({
+    ...entry,
+    name: entry.name ?? deriveName(entry.url),
+  }));
+  const duplicateNames = findDuplicates(resolved.map((entry) => entry.name));
+  if (duplicateNames.length > 0) {
+    ctx.log.error(`Duplicate repo name(s): ${duplicateNames.join(", ")}`);
+    return 1;
+  }
+  const existing = resolved.filter((entry) => manifest.repos.some((r) => r.name === entry.name));
+  if (existing.length > 0) {
+    ctx.log.error(`Repo(s) already in manifest: ${existing.map((entry) => entry.name).join(", ")}`);
     return 1;
   }
   const platforms = parsePlatforms(opts.platforms);
@@ -50,9 +74,9 @@ export async function addCommand(
     ctx.log.error(platforms.message);
     return platforms.code;
   }
-  const newRepo: Repo = {
-    name: resolvedName,
-    url,
+  const newRepos: Repo[] = resolved.map((entry) => ({
+    name: entry.name,
+    url: entry.url,
     ...(opts.install_cmd ? { install_cmd: opts.install_cmd } : {}),
     ...(opts.install_cwd ? { install_cwd: opts.install_cwd } : {}),
     ...(opts.update_cmd ? { update_cmd: opts.update_cmd } : {}),
@@ -60,15 +84,15 @@ export async function addCommand(
       ? { platforms }
       : {}),
     ...(opts.profiles && opts.profiles.length > 0 ? { profiles: opts.profiles } : {}),
-  };
+  }));
   const next: Manifest = {
     ...manifest,
-    repos: [...manifest.repos, newRepo],
+    repos: [...manifest.repos, ...newRepos],
   };
   validateManifest(next);
 
-  ctx.log.info(`Will add repo to ${MANIFEST_FILENAME}:`);
-  ctx.log.info(JSON.stringify(newRepo, null, 2));
+  ctx.log.info(`Will add ${newRepos.length} repo(s) to ${MANIFEST_FILENAME}:`);
+  ctx.log.info(JSON.stringify(newRepos.length === 1 ? newRepos[0] : newRepos, null, 2));
 
   if (!opts.yes) {
     const ok = await ctx.prompt.confirm("Apply?");
@@ -81,13 +105,13 @@ export async function addCommand(
   const path = join(bound, MANIFEST_FILENAME);
   writeFileSync(path, JSON.stringify(next, null, 2) + "\n", "utf8");
   ctx.log.success(`Updated ${path}`);
-  await commitAndPush(ctx, bound, `marshal: add repo ${resolvedName}`);
+  await commitAndPush(ctx, bound, `marshal: add repos ${newRepos.map((repo) => repo.name).join(", ")}`);
 
   if (!opts.sync) {
     ctx.log.info("Run `marshal sync` to apply.");
     return 0;
   }
-  return await syncCommand(ctx, { yes: opts.yes ?? false, repos: [resolvedName] });
+  return await syncCommand(ctx, { yes: opts.yes ?? false, repos: newRepos.map((repo) => repo.name) });
 }
 
 export interface AddAppOptions {
@@ -99,7 +123,15 @@ export interface AddAppOptions {
 
 export async function addAppCommand(
   ctx: MarshalContext,
-  id: string,
+  id: string | string[],
+  opts: AddAppOptions,
+): Promise<number> {
+  return addAppsCommand(ctx, Array.isArray(id) ? id : [id], opts);
+}
+
+export async function addAppsCommand(
+  ctx: MarshalContext,
+  ids: string[],
   opts: AddAppOptions,
 ): Promise<number> {
   const loaded = await loadBoundManifest(ctx);
@@ -107,8 +139,18 @@ export async function addAppCommand(
     return loaded.code;
   }
   const { bound, manifest } = loaded;
-  if (manifest.apps.some((a) => a.id === id)) {
-    ctx.log.error(`App "${id}" already in manifest.`);
+  if (ids.length === 0) {
+    ctx.log.error("No apps provided.");
+    return 2;
+  }
+  const duplicates = findDuplicates(ids);
+  if (duplicates.length > 0) {
+    ctx.log.error(`Duplicate app id(s): ${duplicates.join(", ")}`);
+    return 1;
+  }
+  const existing = ids.filter((id) => manifest.apps.some((a) => a.id === id));
+  if (existing.length > 0) {
+    ctx.log.error(`App(s) already in manifest: ${existing.join(", ")}`);
     return 1;
   }
   const platforms = parsePlatforms(opts.platforms);
@@ -116,19 +158,19 @@ export async function addAppCommand(
     ctx.log.error(platforms.message);
     return platforms.code;
   }
-  const newApp: App = {
+  const newApps: App[] = ids.map((id) => ({
     id,
     ...(platforms && platforms.length > 0 ? { platforms } : {}),
     ...(opts.profiles && opts.profiles.length > 0 ? { profiles: opts.profiles } : {}),
-  };
+  }));
   const next: Manifest = {
     ...manifest,
-    apps: [...manifest.apps, newApp],
+    apps: [...manifest.apps, ...newApps],
   };
   validateManifest(next);
 
-  ctx.log.info(`Will add app to ${MANIFEST_FILENAME}:`);
-  ctx.log.info(JSON.stringify(newApp, null, 2));
+  ctx.log.info(`Will add ${newApps.length} app(s) to ${MANIFEST_FILENAME}:`);
+  ctx.log.info(JSON.stringify(newApps.length === 1 ? newApps[0] : newApps, null, 2));
 
   if (!opts.yes) {
     const ok = await ctx.prompt.confirm("Apply?");
@@ -141,7 +183,7 @@ export async function addAppCommand(
   const path = join(bound, MANIFEST_FILENAME);
   writeFileSync(path, JSON.stringify(next, null, 2) + "\n", "utf8");
   ctx.log.success(`Updated ${path}`);
-  await commitAndPush(ctx, bound, `marshal: add app ${id}`);
+  await commitAndPush(ctx, bound, `marshal: add apps ${ids.join(", ")}`);
 
   if (!opts.sync) {
     ctx.log.info("Run `marshal sync` to apply.");
@@ -162,7 +204,15 @@ export interface AddHookOptions {
 
 export async function addHookCommand(
   ctx: MarshalContext,
-  name: string,
+  name: string | string[],
+  opts: AddHookOptions,
+): Promise<number> {
+  return addHooksCommand(ctx, Array.isArray(name) ? name : [name], opts);
+}
+
+export async function addHooksCommand(
+  ctx: MarshalContext,
+  names: string[],
   opts: AddHookOptions,
 ): Promise<number> {
   const loaded = await loadBoundManifest(ctx);
@@ -170,8 +220,18 @@ export async function addHookCommand(
     return loaded.code;
   }
   const { bound, manifest } = loaded;
-  if (manifest.hooks.some((h) => h.name === name)) {
-    ctx.log.error(`Hook "${name}" already in manifest.`);
+  if (names.length === 0) {
+    ctx.log.error("No hooks provided.");
+    return 2;
+  }
+  const duplicates = findDuplicates(names);
+  if (duplicates.length > 0) {
+    ctx.log.error(`Duplicate hook name(s): ${duplicates.join(", ")}`);
+    return 1;
+  }
+  const existing = names.filter((name) => manifest.hooks.some((h) => h.name === name));
+  if (existing.length > 0) {
+    ctx.log.error(`Hook(s) already in manifest: ${existing.join(", ")}`);
     return 1;
   }
   const platforms = parsePlatforms(opts.platforms);
@@ -183,7 +243,7 @@ export async function addHookCommand(
     ctx.log.error("Hook cwd must be a relative path inside the bound dotfiles repo.");
     return 1;
   }
-  const newHook: Hook = {
+  const newHooks: Hook[] = names.map((name) => ({
     name,
     stage: "post-repos",
     cmd: opts.cmd,
@@ -191,15 +251,15 @@ export async function addHookCommand(
     ...(opts.cwd ? { cwd: opts.cwd } : {}),
     ...(platforms && platforms.length > 0 ? { platforms } : {}),
     ...(opts.profiles && opts.profiles.length > 0 ? { profiles: opts.profiles } : {}),
-  };
+  }));
   const next: Manifest = {
     ...manifest,
-    hooks: [...manifest.hooks, newHook],
+    hooks: [...manifest.hooks, ...newHooks],
   };
   validateManifest(next);
 
-  ctx.log.info(`Will add hook to ${MANIFEST_FILENAME}:`);
-  ctx.log.info(JSON.stringify(newHook, null, 2));
+  ctx.log.info(`Will add ${newHooks.length} hook(s) to ${MANIFEST_FILENAME}:`);
+  ctx.log.info(JSON.stringify(newHooks.length === 1 ? newHooks[0] : newHooks, null, 2));
 
   if (!opts.yes) {
     const ok = await ctx.prompt.confirm("Apply?");
@@ -212,7 +272,7 @@ export async function addHookCommand(
   const path = join(bound, MANIFEST_FILENAME);
   writeFileSync(path, JSON.stringify(next, null, 2) + "\n", "utf8");
   ctx.log.success(`Updated ${path}`);
-  await commitAndPush(ctx, bound, `marshal: add hook ${name}`);
+  await commitAndPush(ctx, bound, `marshal: add hooks ${names.join(", ")}`);
 
   if (!opts.sync) {
     ctx.log.info("Run `marshal sync` to apply.");
@@ -226,11 +286,27 @@ export interface RemoveOptions {
   // Default true: physically delete the cloned repo dir after removing from
   // manifest. Pass --keep-files to leave it in place.
   deleteFiles?: boolean;
+  apps?: string[];
+  hooks?: string[];
+  repos?: string[];
 }
 
 export async function removeCommand(
   ctx: MarshalContext,
-  name: string,
+  name: string | string[],
+  opts: RemoveOptions,
+): Promise<number> {
+  const positionalRepos = Array.isArray(name) ? name : [name];
+  return removeItemsCommand(ctx, {
+    repos: [...positionalRepos, ...(opts.repos ?? [])],
+    apps: opts.apps ?? [],
+    hooks: opts.hooks ?? [],
+  }, opts);
+}
+
+export async function removeItemsCommand(
+  ctx: MarshalContext,
+  targets: { repos?: string[]; apps?: string[]; hooks?: string[] },
   opts: RemoveOptions,
 ): Promise<number> {
   const loaded = await loadBoundManifest(ctx);
@@ -239,15 +315,38 @@ export async function removeCommand(
   }
   const { bound, manifest } = loaded;
 
-  const idx = manifest.repos.findIndex((r) => r.name === name);
-  if (idx === -1) {
-    ctx.log.error(`Repo "${name}" not in manifest.`);
+  const repos = unique(targets.repos ?? []);
+  const apps = unique(targets.apps ?? []);
+  const hooks = unique(targets.hooks ?? []);
+  if (repos.length + apps.length + hooks.length === 0) {
+    ctx.log.error("No apps, hooks, or repos provided.");
+    return 2;
+  }
+
+  const missingRepos = repos.filter((name) => !manifest.repos.some((r) => r.name === name));
+  const missingApps = apps.filter((id) => !manifest.apps.some((a) => a.id === id));
+  const missingHooks = hooks.filter((name) => !manifest.hooks.some((h) => h.name === name));
+  if (missingRepos.length + missingApps.length + missingHooks.length > 0) {
+    if (missingRepos.length > 0) {
+      ctx.log.error(`Repo(s) not in manifest: ${missingRepos.join(", ")}`);
+    }
+    if (missingApps.length > 0) {
+      ctx.log.error(`App(s) not in manifest: ${missingApps.join(", ")}`);
+    }
+    if (missingHooks.length > 0) {
+      ctx.log.error(`Hook(s) not in manifest: ${missingHooks.join(", ")}`);
+    }
     return 1;
   }
 
-  ctx.log.info(`Will remove "${name}" from ${MANIFEST_FILENAME}.`);
-  if (opts.deleteFiles !== false) {
-    ctx.log.info(`Will delete cloned repo directory (use --keep-files to skip).`);
+  const summary = [
+    repos.length > 0 ? `${repos.length} repo(s)` : "",
+    apps.length > 0 ? `${apps.length} app(s)` : "",
+    hooks.length > 0 ? `${hooks.length} hook(s)` : "",
+  ].filter(Boolean).join(", ");
+  ctx.log.info(`Will remove ${summary} from ${MANIFEST_FILENAME}.`);
+  if (repos.length > 0 && opts.deleteFiles !== false) {
+    ctx.log.info("Will delete cloned repo directories (use --keep-files to skip).");
   }
   if (!opts.yes) {
     const ok = await ctx.prompt.confirm("Apply?");
@@ -257,24 +356,35 @@ export async function removeCommand(
     }
   }
 
-  const next = { ...manifest, repos: manifest.repos.filter((r) => r.name !== name) };
+  const repoSet = new Set(repos);
+  const appSet = new Set(apps);
+  const hookSet = new Set(hooks);
+  const next = {
+    ...manifest,
+    apps: manifest.apps.filter((a) => !appSet.has(a.id)),
+    repos: manifest.repos.filter((r) => !repoSet.has(r.name)),
+    hooks: manifest.hooks.filter((h) => !hookSet.has(h.name)),
+  };
+  validateManifest(next);
   const path = join(bound, MANIFEST_FILENAME);
   writeFileSync(path, JSON.stringify(next, null, 2) + "\n", "utf8");
   ctx.log.success(`Updated ${path}`);
-  await commitAndPush(ctx, bound, `marshal: remove repo ${name}`);
+  await commitAndPush(ctx, bound, `marshal: remove ${summary}`);
 
-  if (opts.deleteFiles !== false) {
+  if (repos.length > 0 && opts.deleteFiles !== false) {
     const { rmSync, existsSync } = await import("node:fs");
     const { resolveReposPath } = await import("../plan.js");
     const reposPath = resolveReposPath(manifest, ctx.homeDir);
-    const target = join(reposPath, name);
-    if (existsSync(target)) {
-      try {
-        rmSync(target, { recursive: true, force: true });
-        ctx.log.success(`Deleted ${target}`);
-      } catch (err) {
-        ctx.log.error(`Failed to delete ${target}: ${(err as Error).message}`);
-        return 1;
+    for (const repo of repos) {
+      const target = join(reposPath, repo);
+      if (existsSync(target)) {
+        try {
+          rmSync(target, { recursive: true, force: true });
+          ctx.log.success(`Deleted ${target}`);
+        } catch (err) {
+          ctx.log.error(`Failed to delete ${target}: ${(err as Error).message}`);
+          return 1;
+        }
       }
     }
   }
@@ -331,6 +441,22 @@ function deriveName(url: string): string {
   return "tool";
 }
 
+function findDuplicates(values: string[]): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value)) {
+      duplicates.add(value);
+    }
+    seen.add(value);
+  }
+  return [...duplicates];
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
 function isValidHookCwd(cwd: string): boolean {
   if (isAbsolute(cwd)) {
     return false;
@@ -343,7 +469,7 @@ function isValidHookCwd(cwd: string): boolean {
 
 // Commit and push marshal.json changes in the bound dotfiles repo.
 // Best-effort: logs warnings on failure but does not fail the command.
-async function commitAndPush(ctx: MarshalContext, dotfilesRepo: string, message: string): Promise<void> {
+export async function commitAndPush(ctx: MarshalContext, dotfilesRepo: string, message: string): Promise<void> {
   try {
     await ctx.runner.exec(`git add ${MANIFEST_FILENAME}`, { cwd: dotfilesRepo, inherit: false });
     await ctx.runner.exec(`git commit -m "${message}"`, { cwd: dotfilesRepo, inherit: false });

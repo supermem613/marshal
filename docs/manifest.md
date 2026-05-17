@@ -193,15 +193,19 @@ marshal bind <url-or-path>     # set / re-bind
 marshal bind --show            # print current binding
 marshal bind --unset           # forget binding
 marshal where                  # print just the path (one line, scriptable)
+marshal profile add work-laptop
 marshal profile set work-laptop
 marshal profile get
 marshal profile list
 marshal profile clear
+marshal profile scope app work-laptop Git.Git OpenJS.NodeJS.LTS
+marshal profile unscope hook work-laptop config-sync prompt-sync
+marshal profile remove work-laptop
 ```
 
 The binding refuses to point at a directory that doesn't contain a `marshal.json`, so you can't accidentally bind to a non-marshal repo.
 
-`profile` is optional for legacy manifests. Once the manifest contains profile-scoped items, set it with `marshal profile set <name>` before syncing. Re-binding preserves the existing local profile; sync re-validates it against the newly bound manifest.
+`profile` is optional for legacy manifests. Once the manifest contains profile-scoped items, set it with `marshal profile set <name>` before syncing. Re-binding preserves the existing local profile; sync re-validates it against the newly bound manifest. Use `profile add` and `profile remove` for the shared manifest's declared profiles. Use `profile scope <app|repo|hook> <profile> <items...>` and `profile unscope <app|repo|hook> <profile> <items...>` to update one or more existing item scopes.
 
 ### Multiple machines
 

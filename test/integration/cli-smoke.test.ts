@@ -43,7 +43,7 @@ test("cli: --version prints version", () => {
 test("cli: --help lists every registered subcommand", () => {
   const r = run("--help");
   assert.equal(r.code, 0);
-  for (const cmd of ["doctor", "bind", "init", "sync", "status", "list", "profile", "where", "cd", "home", "update", "add", "add-app", "add-hook", "remove"]) {
+  for (const cmd of ["doctor", "bind", "init", "sync", "status", "list", "profile", "where", "cd", "home", "update", "add", "add-app", "add-hook", "remove", "remove-app", "remove-hook"]) {
     assert.ok(r.stdout.includes(cmd), `expected --help to mention ${cmd}; got:\n${r.stdout}`);
   }
 });
@@ -52,6 +52,44 @@ test("cli: sync --help mentions profile override", () => {
   const r = run("sync --help");
   assert.equal(r.code, 0);
   assert.ok(r.stdout.includes("--profile"));
+});
+
+test("cli: profile help lists actionable profile subcommands", () => {
+  const r = run("help profile");
+  assert.equal(r.code, 0);
+  for (const snippet of [
+    "profile list",
+    "set <name>",
+    "add [options] <name>",
+    "scope [options] <kind> <profile> <items...>",
+    "unscope [options] <kind> <profile> <items...>",
+    "remove [options] <name>",
+    "marshal profile scope repo work-laptop forge marshal -y",
+    "repo    repo name from repos[]",
+  ]) {
+    assert.ok(r.stdout.includes(snippet), `expected profile help to mention ${snippet}; got:\n${r.stdout}`);
+  }
+});
+
+test("cli: batch add/remove help is clear by item kind", () => {
+  const addRepos = run("add --help");
+  const addApps = run("add-app --help");
+  const addHooks = run("add-hook --help");
+  const removeRepos = run("remove --help");
+  const removeApps = run("remove-app --help");
+  const removeHooks = run("remove-hook --help");
+  assert.equal(addRepos.code, 0);
+  assert.equal(addApps.code, 0);
+  assert.equal(addHooks.code, 0);
+  assert.equal(removeRepos.code, 0);
+  assert.equal(removeApps.code, 0);
+  assert.equal(removeHooks.code, 0);
+  assert.ok(addRepos.stdout.includes("<urls...>"));
+  assert.ok(addApps.stdout.includes("<ids...>"));
+  assert.ok(addHooks.stdout.includes("<names...>"));
+  assert.ok(removeRepos.stdout.includes("[repos...]"));
+  assert.ok(removeApps.stdout.includes("<ids...>"));
+  assert.ok(removeHooks.stdout.includes("<names...>"));
 });
 
 test("cli: unknown command prints commander error and exits non-zero", () => {
