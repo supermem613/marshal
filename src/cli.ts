@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createDefaultContext } from "./context.js";
+import { cliField, ManifestItemKind } from "./manifest.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { bindCommand } from "./commands/bind.js";
 import { syncCommand } from "./commands/sync.js";
@@ -23,6 +24,22 @@ const VERSION = (JSON.parse(readFileSync(pkgPath, "utf8")) as { version: string 
 const ctx = createDefaultContext(import.meta.url);
 
 const program = new Command();
+const csvList = (value: string): string[] => value.split(",").map((s) => s.trim());
+
+function addSchemaOption(command: Command, kind: ManifestItemKind, field: string): Command {
+  const option = cliField(kind, field);
+  return command.option(option.cliFlag, option.cliDescription);
+}
+
+function addSchemaListOption(command: Command, kind: ManifestItemKind, field: "platforms" | "profiles"): Command {
+  const option = cliField(kind, field);
+  return command.option(option.cliFlag, option.cliDescription, csvList);
+}
+
+function addRequiredSchemaOption(command: Command, kind: ManifestItemKind, field: string): Command {
+  const option = cliField(kind, field);
+  return command.requiredOption(option.cliFlag, option.cliDescription);
+}
 
 program
   .name("marshal")
@@ -220,14 +237,14 @@ program
   });
 
 program
-  .command("add <urls...>")
-  .description("Add one or more tool repos to the manifest. Run `marshal sync` to apply, or pass --sync.")
-  .option("--name <name>", "Manifest repo name. Only valid when adding one URL.")
-  .option("--install-cmd <cmd>", "Install command to run after clone/pull")
-  .option("--update-cmd <cmd>", "Update command (default: rerun install_cmd after git pull)")
-  .option("--install-cwd <subdir>", "Subdirectory inside the repo where install runs")
-  .option("--platforms <list>", "Comma-separated platform list (win32,darwin,linux)", (v) => v.split(",").map((s) => s.trim()))
-  .option("--profiles <list>", "Comma-separated profile list declared in marshal.json", (v) => v.split(",").map((s) => s.trim()))
+  .command("add <url>")
+  .description("Add one tool repo to the manifest. Run `marshal sync` to apply, or pass --sync.")
+  .option(cliField("repo", "name").cliFlag, cliField("repo", "name").cliDescription)
+  .option(cliField("repo", "install_cmd").cliFlag, cliField("repo", "install_cmd").cliDescription)
+  .option(cliField("repo", "update_cmd").cliFlag, cliField("repo", "update_cmd").cliDescription)
+  .option(cliField("repo", "install_cwd").cliFlag, cliField("repo", "install_cwd").cliDescription)
+  .option(cliField("repo", "platforms").cliFlag, cliField("repo", "platforms").cliDescription, csvList)
+  .option(cliField("repo", "profiles").cliFlag, cliField("repo", "profiles").cliDescription, csvList)
   .option("--sync", "Also run sync after writing the manifest")
   .addOption(new Option("--no-sync").hideHelp())
   .option("-y, --yes", "Skip confirmation prompt")
@@ -235,113 +252,95 @@ program
 
 Examples:
   marshal add https://github.com/me/tool.git -y
-  marshal add https://github.com/me/a.git https://github.com/me/b.git -y
   marshal add https://github.com/me/tool.git --name tool-alpha --profiles work-laptop -y
-
-Batch notes:
-  --name is only valid with one URL. For multiple URLs, repo names are derived from each URL.
-  Shared flags such as --platforms, --profiles, and --install-cmd apply to every added repo.
 `)
-  .action(async (urls, opts) => {
-    if (opts.name && urls.length !== 1) {
-      ctx.log.error("--name can only be used when adding one repo URL.");
-      process.exit(2);
-    }
-    process.exit(await addReposCommand(ctx, urls.map((url: string) => ({ url, name: opts.name })), opts));
+  .action(async (url, opts) => {
+    process.exit(await addReposCommand(ctx, [{ url, name: opts.name }], opts));
   });
 
-program
-  .command("add-app <ids...>")
-  .description("Add one or more prerequisite apps to the manifest. Run `marshal sync` to apply, or pass --sync.")
-  .option("--platforms <list>", "Comma-separated platform list (win32,darwin,linux)", (v) => v.split(",").map((s) => s.trim()))
-  .option("--profiles <list>", "Comma-separated profile list declared in marshal.json", (v) => v.split(",").map((s) => s.trim()))
+const addApp = program
+  .command("add-app <id>")
+  .description("Add one prerequisite app to the manifest. Run `marshal sync` to apply, or pass --sync.");
+addSchemaListOption(addApp, "app", "platforms");
+addSchemaListOption(addApp, "app", "profiles");
+addApp
   .option("--sync", "Also run sync after writing the manifest")
   .option("-y, --yes", "Skip confirmation prompt")
   .addHelpText("after", `
 
 Examples:
   marshal add-app Git.Git -y
-  marshal add-app Git.Git OpenJS.NodeJS.LTS dandavison.delta -y
-  marshal add-app Corp.VPN Corp.DevicePortal --profiles work-laptop -y
+  marshal add-app Corp.VPN --profiles work-laptop -y
 `)
-  .action(async (ids, opts) => {
-    process.exit(await addAppsCommand(ctx, ids, opts));
+  .action(async (id, opts) => {
+    process.exit(await addAppsCommand(ctx, [id], opts));
   });
 
-program
-  .command("add-hook <names...>")
-  .description("Add one or more sync hooks to the manifest. Run `marshal sync` to apply, or pass --sync.")
-  .requiredOption("--cmd <cmd>", "Shell command to run during sync")
-  .option("--cwd <path>", "Relative path under the bound dotfiles repo where the hook runs")
-  .option("--interactive", "Run the hook with a real terminal attached")
-  .option("--platforms <list>", "Comma-separated platform list (win32,darwin,linux)", (v) => v.split(",").map((s) => s.trim()))
-  .option("--profiles <list>", "Comma-separated profile list declared in marshal.json", (v) => v.split(",").map((s) => s.trim()))
+const addHook = program
+  .command("add-hook <name>")
+  .description("Add one sync hook to the manifest. Run `marshal sync` to apply, or pass --sync.");
+addRequiredSchemaOption(addHook, "hook", "cmd");
+addSchemaOption(addHook, "hook", "cwd");
+addSchemaOption(addHook, "hook", "interactive");
+addSchemaListOption(addHook, "hook", "platforms");
+addSchemaListOption(addHook, "hook", "profiles");
+addHook
   .option("--sync", "Also run sync after writing the manifest")
   .option("-y, --yes", "Skip confirmation prompt")
   .addHelpText("after", `
 
 Examples:
   marshal add-hook config-sync --cmd "configsync sync" --interactive -y
-  marshal add-hook config-sync prompt-sync --cmd "npm run sync" --profiles work-laptop -y
-
-Batch notes:
-  The same --cmd, --cwd, --interactive, --platforms, and --profiles values apply to every added hook.
 `)
-  .action(async (names, opts) => {
-    process.exit(await addHooksCommand(ctx, names, opts));
+  .action(async (name, opts) => {
+    process.exit(await addHooksCommand(ctx, [name], opts));
   });
 
 program
-  .command("remove [repos...]")
-  .description("Remove one or more tool repos from the manifest")
+  .command("remove <repo>")
+  .description("Remove one tool repo from the manifest")
   .option("--keep-files", "Do not delete the cloned repo directory")
   .option("-y, --yes", "Skip confirmation prompt")
   .addHelpText("after", `
 
 Examples:
   marshal remove tool-alpha -y
-  marshal remove tool-alpha tool-beta --keep-files -y
-
-Batch notes:
-  Positional values are repo names.
   Repo removals delete cloned repo directories unless --keep-files is passed.
   Use remove-app for apps and remove-hook for hooks.
 `)
-  .action(async (repos, opts) => {
+  .action(async (repo, opts) => {
     process.exit(await removeItemsCommand(ctx, {
-      repos,
+      repos: [repo],
     }, { yes: opts.yes, deleteFiles: !opts.keepFiles }));
   });
 
 program
-  .command("remove-app <ids...>")
-  .description("Remove one or more prerequisite apps from the manifest")
+  .command("remove-app <id>")
+  .description("Remove one prerequisite app from the manifest")
   .option("-y, --yes", "Skip confirmation prompt")
   .addHelpText("after", `
 
 Examples:
   marshal remove-app Git.Git -y
-  marshal remove-app Git.Git OpenJS.NodeJS.LTS dandavison.delta -y
 `)
-  .action(async (ids, opts) => {
+  .action(async (id, opts) => {
     process.exit(await removeItemsCommand(ctx, {
-      apps: ids,
+      apps: [id],
     }, { yes: opts.yes, deleteFiles: false }));
   });
 
 program
-  .command("remove-hook <names...>")
-  .description("Remove one or more sync hooks from the manifest")
+  .command("remove-hook <name>")
+  .description("Remove one sync hook from the manifest")
   .option("-y, --yes", "Skip confirmation prompt")
   .addHelpText("after", `
 
 Examples:
   marshal remove-hook config-sync -y
-  marshal remove-hook config-sync prompt-sync -y
 `)
-  .action(async (names, opts) => {
+  .action(async (name, opts) => {
     process.exit(await removeItemsCommand(ctx, {
-      hooks: names,
+      hooks: [name],
     }, { yes: opts.yes, deleteFiles: false }));
   });
 

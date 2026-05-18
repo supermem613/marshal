@@ -19,8 +19,11 @@ import { pullDotfilesRepo } from "../dotfiles-git.js";
 
 export interface AddOptions {
   install_cmd?: string;
+  installCmd?: string;
   update_cmd?: string;
+  updateCmd?: string;
   install_cwd?: string;
+  installCwd?: string;
   platforms?: string[];
   profiles?: string[];
   yes?: boolean;
@@ -30,14 +33,11 @@ export interface AddOptions {
 
 export async function addCommand(
   ctx: MarshalContext,
-  url: string | string[],
+  url: string,
   name: string | undefined,
   opts: AddOptions,
 ): Promise<number> {
-  const entries = Array.isArray(url)
-    ? url.map((u) => ({ url: u }))
-    : [{ url, name }];
-  return addReposCommand(ctx, entries, opts);
+  return addReposCommand(ctx, [{ url, name }], opts);
 }
 
 export async function addReposCommand(
@@ -74,12 +74,15 @@ export async function addReposCommand(
     ctx.log.error(platforms.message);
     return platforms.code;
   }
+  const installCmd = opts.install_cmd ?? opts.installCmd;
+  const updateCmd = opts.update_cmd ?? opts.updateCmd;
+  const installCwd = opts.install_cwd ?? opts.installCwd;
   const newRepos: Repo[] = resolved.map((entry) => ({
     name: entry.name,
     url: entry.url,
-    ...(opts.install_cmd ? { install_cmd: opts.install_cmd } : {}),
-    ...(opts.install_cwd ? { install_cwd: opts.install_cwd } : {}),
-    ...(opts.update_cmd ? { update_cmd: opts.update_cmd } : {}),
+    ...(installCmd ? { install_cmd: installCmd } : {}),
+    ...(installCwd ? { install_cwd: installCwd } : {}),
+    ...(updateCmd ? { update_cmd: updateCmd } : {}),
     ...(platforms && platforms.length > 0
       ? { platforms }
       : {}),
@@ -123,10 +126,10 @@ export interface AddAppOptions {
 
 export async function addAppCommand(
   ctx: MarshalContext,
-  id: string | string[],
+  id: string,
   opts: AddAppOptions,
 ): Promise<number> {
-  return addAppsCommand(ctx, Array.isArray(id) ? id : [id], opts);
+  return addAppsCommand(ctx, [id], opts);
 }
 
 export async function addAppsCommand(
@@ -204,10 +207,10 @@ export interface AddHookOptions {
 
 export async function addHookCommand(
   ctx: MarshalContext,
-  name: string | string[],
+  name: string,
   opts: AddHookOptions,
 ): Promise<number> {
-  return addHooksCommand(ctx, Array.isArray(name) ? name : [name], opts);
+  return addHooksCommand(ctx, [name], opts);
 }
 
 export async function addHooksCommand(
@@ -293,12 +296,11 @@ export interface RemoveOptions {
 
 export async function removeCommand(
   ctx: MarshalContext,
-  name: string | string[],
+  name: string,
   opts: RemoveOptions,
 ): Promise<number> {
-  const positionalRepos = Array.isArray(name) ? name : [name];
   return removeItemsCommand(ctx, {
-    repos: [...positionalRepos, ...(opts.repos ?? [])],
+    repos: [name, ...(opts.repos ?? [])],
     apps: opts.apps ?? [],
     hooks: opts.hooks ?? [],
   }, opts);

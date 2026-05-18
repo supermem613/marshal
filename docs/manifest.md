@@ -11,6 +11,8 @@ Marshal reads two JSON files:
 
 Single source of truth for what apps and tools a machine should have. Items are shared by default; add `profiles` when an app, repo, or hook should apply only to specific machine profiles.
 
+The manifest stores `apps`, `repos`, and `hooks` as arrays because a machine fleet has many items. The mutation CLI intentionally edits one item per command (`marshal add <url>`, `marshal add-app <id>`, `marshal add-hook <name>`, and the matching remove commands) so each change is explicit and has one confirmation. CLI help for manifest-backed add options is generated from the field metadata in the schema code.
+
 ```jsonc
 {
   "version": 1,

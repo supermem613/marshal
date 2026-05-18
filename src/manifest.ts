@@ -10,33 +10,139 @@ import { SUPPORTED_PLATFORMS } from "./platform.js";
 
 export const MANIFEST_FILENAME = "marshal.json";
 
+export type ManifestItemKind = "app" | "repo" | "hook";
+
+export interface ManifestFieldDoc {
+  description: string;
+  cliFlag?: string;
+  cliDescription?: string;
+}
+
+export const ManifestFieldDocs = {
+  app: {
+    id: {
+      description: "Winget package identifier.",
+    },
+    platforms: {
+      description: "Array of platform names. Absent means all platforms.",
+      cliFlag: "--platforms <list>",
+      cliDescription: "Comma-separated platform list (win32,darwin,linux)",
+    },
+    profiles: {
+      description: "Array of declared profile names. Absent means shared across all profiles.",
+      cliFlag: "--profiles <list>",
+      cliDescription: "Comma-separated profile list declared in marshal.json",
+    },
+  },
+  repo: {
+    name: {
+      description: "Kebab-case unique identifier. Becomes the folder name under reposPath.",
+      cliFlag: "--name <name>",
+      cliDescription: "Manifest repo name",
+    },
+    url: {
+      description: "Clonable URL accepted by git clone.",
+    },
+    platforms: {
+      description: "Array of platform names. Absent means all platforms.",
+      cliFlag: "--platforms <list>",
+      cliDescription: "Comma-separated platform list (win32,darwin,linux)",
+    },
+    profiles: {
+      description: "Array of declared profile names. Absent means shared across all profiles.",
+      cliFlag: "--profiles <list>",
+      cliDescription: "Comma-separated profile list declared in marshal.json",
+    },
+    install_cwd: {
+      description: "Subdirectory inside the repo where install_cmd and update_cmd run.",
+      cliFlag: "--install-cwd <subdir>",
+      cliDescription: "Subdirectory inside the repo where install and update commands run",
+    },
+    install_cmd: {
+      description: "Shell command to build or install the tool after clone or pull.",
+      cliFlag: "--install-cmd <cmd>",
+      cliDescription: "Install command to run after clone or pull",
+    },
+    update_cmd: {
+      description: "Shell command to refresh an existing install. Null or absent falls back to git pull plus install_cmd.",
+      cliFlag: "--update-cmd <cmd>",
+      cliDescription: "Update command. Defaults to git pull plus install_cmd when omitted",
+    },
+  },
+  hook: {
+    name: {
+      description: "Kebab-case unique identifier for plan and results output.",
+    },
+    stage: {
+      description: "Hook stage. v1 supports post-repos.",
+    },
+    cmd: {
+      description: "Shell command to run after the repo stage.",
+      cliFlag: "--cmd <cmd>",
+      cliDescription: "Shell command to run during sync",
+    },
+    cwd: {
+      description: "Relative path under the bound dotfiles repo.",
+      cliFlag: "--cwd <path>",
+      cliDescription: "Relative path under the bound dotfiles repo where the hook runs",
+    },
+    interactive: {
+      description: "Whether the hook runs with a real terminal attached.",
+      cliFlag: "--interactive",
+      cliDescription: "Run the hook with a real terminal attached",
+    },
+    platforms: {
+      description: "Array of platform names. Absent means all platforms.",
+      cliFlag: "--platforms <list>",
+      cliDescription: "Comma-separated platform list (win32,darwin,linux)",
+    },
+    profiles: {
+      description: "Array of declared profile names. Absent means shared across all profiles.",
+      cliFlag: "--profiles <list>",
+      cliDescription: "Comma-separated profile list declared in marshal.json",
+    },
+  },
+} as const satisfies Record<ManifestItemKind, Record<string, ManifestFieldDoc>>;
+
+export function cliField(kind: ManifestItemKind, field: string): Required<Pick<ManifestFieldDoc, "cliFlag" | "cliDescription">> {
+  const docsByKind: Record<ManifestItemKind, Record<string, ManifestFieldDoc>> = ManifestFieldDocs;
+  const doc = docsByKind[kind][field];
+  if (!doc?.cliFlag || !doc.cliDescription) {
+    throw new Error(`No CLI help metadata for ${kind}.${field}`);
+  }
+  return {
+    cliFlag: doc.cliFlag,
+    cliDescription: doc.cliDescription,
+  };
+}
+
 const PlatformSchema = z.enum(SUPPORTED_PLATFORMS as unknown as [string, ...string[]]);
 const ProfileNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/i, "profile must be alphanumeric/hyphen");
 
 const AppSchema = z.object({
-  id: z.string().min(1, "app.id required"),
-  platforms: z.array(PlatformSchema).optional(),
-  profiles: z.array(ProfileNameSchema).optional(),
+  id: z.string().min(1, "app.id required").describe(ManifestFieldDocs.app.id.description),
+  platforms: z.array(PlatformSchema).optional().describe(ManifestFieldDocs.app.platforms.description),
+  profiles: z.array(ProfileNameSchema).optional().describe(ManifestFieldDocs.app.profiles.description),
 });
 
 const RepoSchema = z.object({
-  name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/i, "repo.name must be alphanumeric/hyphen"),
-  url: z.string().min(1, "repo.url required"),
-  platforms: z.array(PlatformSchema).optional(),
-  profiles: z.array(ProfileNameSchema).optional(),
-  install_cwd: z.string().optional(),
-  install_cmd: z.string().min(1).optional(),
-  update_cmd: z.string().min(1).nullable().optional(),
+  name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/i, "repo.name must be alphanumeric/hyphen").describe(ManifestFieldDocs.repo.name.description),
+  url: z.string().min(1, "repo.url required").describe(ManifestFieldDocs.repo.url.description),
+  platforms: z.array(PlatformSchema).optional().describe(ManifestFieldDocs.repo.platforms.description),
+  profiles: z.array(ProfileNameSchema).optional().describe(ManifestFieldDocs.repo.profiles.description),
+  install_cwd: z.string().optional().describe(ManifestFieldDocs.repo.install_cwd.description),
+  install_cmd: z.string().min(1).optional().describe(ManifestFieldDocs.repo.install_cmd.description),
+  update_cmd: z.string().min(1).nullable().optional().describe(ManifestFieldDocs.repo.update_cmd.description),
 });
 
 const HookSchema = z.object({
-  name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/i, "hook.name must be alphanumeric/hyphen"),
-  stage: z.literal("post-repos"),
-  cmd: z.string().min(1, "hook.cmd required"),
-  cwd: z.string().optional(),
-  interactive: z.boolean().optional().default(false),
-  platforms: z.array(PlatformSchema).optional(),
-  profiles: z.array(ProfileNameSchema).optional(),
+  name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/i, "hook.name must be alphanumeric/hyphen").describe(ManifestFieldDocs.hook.name.description),
+  stage: z.literal("post-repos").describe(ManifestFieldDocs.hook.stage.description),
+  cmd: z.string().min(1, "hook.cmd required").describe(ManifestFieldDocs.hook.cmd.description),
+  cwd: z.string().optional().describe(ManifestFieldDocs.hook.cwd.description),
+  interactive: z.boolean().optional().default(false).describe(ManifestFieldDocs.hook.interactive.description),
+  platforms: z.array(PlatformSchema).optional().describe(ManifestFieldDocs.hook.platforms.description),
+  profiles: z.array(ProfileNameSchema).optional().describe(ManifestFieldDocs.hook.profiles.description),
 });
 
 export const ManifestSchema = z.object({

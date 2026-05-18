@@ -1,6 +1,6 @@
 {
   "name": "marshal",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Bind to a dotfiles repo and provision your CLI tool fleet — clone, build, install, and update everything from one manifest.",
   "type": "module",
   "bin": {

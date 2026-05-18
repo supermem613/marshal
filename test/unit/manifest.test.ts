@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { ManifestSchema, validateManifest, ManifestError, readManifest } from "../../src/manifest.js";
+import { ManifestSchema, validateManifest, ManifestError, readManifest, cliField } from "../../src/manifest.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -38,6 +38,17 @@ test("ManifestSchema: accepts full manifest", () => {
     }],
   });
   assert.ok(r.success, JSON.stringify(r));
+});
+
+test("cliField: exposes CLI help metadata from manifest schema code", () => {
+  assert.deepEqual(cliField("repo", "install_cmd"), {
+    cliFlag: "--install-cmd <cmd>",
+    cliDescription: "Install command to run after clone or pull",
+  });
+  assert.deepEqual(cliField("hook", "cmd"), {
+    cliFlag: "--cmd <cmd>",
+    cliDescription: "Shell command to run during sync",
+  });
 });
 
 test("ManifestSchema: rejects wrong version", () => {

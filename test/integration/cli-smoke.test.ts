@@ -71,7 +71,7 @@ test("cli: profile help lists actionable profile subcommands", () => {
   }
 });
 
-test("cli: batch add/remove help is clear by item kind", () => {
+test("cli: add/remove help is singular by item kind", () => {
   const addRepos = run("add --help");
   const addApps = run("add-app --help");
   const addHooks = run("add-hook --help");
@@ -84,12 +84,13 @@ test("cli: batch add/remove help is clear by item kind", () => {
   assert.equal(removeRepos.code, 0);
   assert.equal(removeApps.code, 0);
   assert.equal(removeHooks.code, 0);
-  assert.ok(addRepos.stdout.includes("<urls...>"));
-  assert.ok(addApps.stdout.includes("<ids...>"));
-  assert.ok(addHooks.stdout.includes("<names...>"));
-  assert.ok(removeRepos.stdout.includes("[repos...]"));
-  assert.ok(removeApps.stdout.includes("<ids...>"));
-  assert.ok(removeHooks.stdout.includes("<names...>"));
+  assert.ok(addRepos.stdout.includes("<url>"));
+  assert.ok(addApps.stdout.includes("<id>"));
+  assert.ok(addHooks.stdout.includes("<name>"));
+  assert.ok(removeRepos.stdout.includes("<repo>"));
+  assert.ok(removeApps.stdout.includes("<id>"));
+  assert.ok(removeHooks.stdout.includes("<name>"));
+  assert.ok(addRepos.stdout.includes("Install command to run after clone or pull"));
 });
 
 test("cli: unknown command prints commander error and exits non-zero", () => {

@@ -6,9 +6,9 @@ Full reference for every `marshal` subcommand. Run `marshal --help` for the same
 
 | Verb | Usage | Description |
 |------|-------|-------------|
-| `add` | `marshal add <urls...>` | Append one or more tool repos to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--name` for one URL, `--install-cmd`, `--update-cmd`, `--install-cwd`, `--platforms`, `--profiles`, `--sync`, `-y`. Shared flags apply to every added repo. |
-| `add-app` | `marshal add-app <ids...>` | Append one or more prerequisite apps to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--platforms`, `--profiles`, `--sync`, `-y`. Shared flags apply to every added app. |
-| `add-hook` | `marshal add-hook <names...> --cmd "<cmd>"` | Append one or more sync hooks to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--cwd`, `--interactive`, `--platforms`, `--profiles`, `--sync`, `-y`. Shared flags apply to every added hook. |
+| `add` | `marshal add <url>` | Append one tool repo to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--name`, `--install-cmd`, `--update-cmd`, `--install-cwd`, `--platforms`, `--profiles`, `--sync`, `-y`. Manifest-field option help is read from the schema metadata. |
+| `add-app` | `marshal add-app <id>` | Append one prerequisite app to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--platforms`, `--profiles`, `--sync`, `-y`. Manifest-field option help is read from the schema metadata. |
+| `add-hook` | `marshal add-hook <name> --cmd "<cmd>"` | Append one sync hook to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--cwd`, `--interactive`, `--platforms`, `--profiles`, `--sync`, `-y`. Manifest-field option help is read from the schema metadata. |
 | `bind` | `marshal bind <url\|path>` | Bind to a dotfiles repo. URLs auto-clone + provision; paths just record the binding. Flags: `--path <p>`, `--show`, `--unset`, `--no-sync`, `-y`. |
 | `cd` | `marshal cd` | Spawn a subshell rooted at the bound dotfiles repo (like `chezmoi cd`). |
 | `doctor` | `marshal doctor` | Health check: Node version, git, winget (Win32), binding, manifest. `--json` supported. |
@@ -16,9 +16,9 @@ Full reference for every `marshal` subcommand. Run `marshal --help` for the same
 | `init` | `marshal init` | Create a minimal `marshal.json` in the current directory and record the binding. `--no-bind` to skip binding. |
 | `list` | `marshal list` | Print the full manifest contents (apps, repos, hooks, with platform filters). `--json` supported. |
 | `profile` | `marshal profile [list|get|set|clear|add|remove|scope|unscope] ...` | Manage declared manifest profiles, item profile scopes, and the machine-local active profile stored in `~/.marshal.json`. Manifest-editing actions support `-y`. |
-| `remove` | `marshal remove <repos...>` | Remove one or more tool repos from the manifest and delete cloned directories. `--keep-files` to preserve clones. `-y` to skip confirmation. |
-| `remove-app` | `marshal remove-app <ids...>` | Remove one or more prerequisite apps from the manifest. `-y` to skip confirmation. |
-| `remove-hook` | `marshal remove-hook <names...>` | Remove one or more sync hooks from the manifest. `-y` to skip confirmation. |
+| `remove` | `marshal remove <repo>` | Remove one tool repo from the manifest and delete the cloned directory. `--keep-files` to preserve the clone. `-y` to skip confirmation. |
+| `remove-app` | `marshal remove-app <id>` | Remove one prerequisite app from the manifest. `-y` to skip confirmation. |
+| `remove-hook` | `marshal remove-hook <name>` | Remove one sync hook from the manifest. `-y` to skip confirmation. |
 | `status` | `marshal status` | Show what's recorded, what applies to this platform, and what's installed. `--json` for machine output. |
 | `sync` | `marshal sync [repos...]` | Apply the manifest: install apps, clone/build/refresh repos, then run configured hooks. Optionally limit to named tools. Flags: `-y`, `--hooks`, `--profile <name>` one-shot override. |
 | `update` | `marshal update` | Self-update marshal: `git pull --ff-only`, then `npm install && npm run build` only when the pull brings in new changes. |
@@ -62,7 +62,6 @@ reports that the repo is already up to date.
 
 ```pwsh
 marshal add https://github.com/<you>/newtool.git
-marshal add https://github.com/<you>/tool-a.git https://github.com/<you>/tool-b.git
 marshal sync
 # no install_cmd → clone/pull only
 ```
@@ -82,9 +81,12 @@ marshal sync
 Add prerequisites and hooks without editing JSON:
 
 ```pwsh
-marshal add-app Git.Git OpenJS.NodeJS.LTS dandavison.delta -y
+marshal add-app Git.Git -y
+marshal add-app OpenJS.NodeJS.LTS -y
+marshal add-app dandavison.delta -y
 marshal add-app Microsoft.DotNet.SDK.9 --platforms win32 -y
-marshal add-hook config-sync prompt-sync --cmd "configsync sync" --interactive -y
+marshal add-hook config-sync --cmd "configsync sync" --interactive -y
+marshal add-hook prompt-sync --cmd "prompt sync" --interactive -y
 marshal sync
 ```
 
@@ -120,9 +122,12 @@ Use `marshal sync --profile <name>` for a one-shot override without changing `~/
 
 ```pwsh
 marshal remove newtool                # also deletes ~/repos/newtool/
-marshal remove tool-alpha tool-beta --keep-files
-marshal remove-app Git.Git OpenJS.NodeJS.LTS
-marshal remove-hook config-sync prompt-sync
+marshal remove tool-alpha --keep-files
+marshal remove tool-beta --keep-files
+marshal remove-app Git.Git
+marshal remove-app OpenJS.NodeJS.LTS
+marshal remove-hook config-sync
+marshal remove-hook prompt-sync
 ```
 
 ### Inspecting state

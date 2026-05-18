@@ -28,14 +28,18 @@ cd ~/repos/dotfiles
 marshal init --no-bind
 marshal bind .
 
-marshal add https://github.com/<you>/tool-alpha.git https://github.com/<you>/tool-beta.git -y
+marshal add https://github.com/<you>/tool-alpha.git -y
+marshal add https://github.com/<you>/tool-beta.git -y
 marshal add https://github.com/<you>/tool-suite.git --name suite --install-cwd cli -y
 marshal add https://github.com/<you>/desktop-tool.git --install-cmd "./build.ps1" --platforms win32 -y
 
-marshal add-app Git.Git OpenJS.NodeJS.LTS dandavison.delta -y
+marshal add-app Git.Git -y
+marshal add-app OpenJS.NodeJS.LTS -y
+marshal add-app dandavison.delta -y
 marshal add-app Microsoft.DotNet.SDK.9 --platforms win32 -y
 
-marshal add-hook config-sync prompt-sync --cmd "configsync sync" --interactive -y
+marshal add-hook config-sync --cmd "configsync sync" --interactive -y
+marshal add-hook prompt-sync --cmd "prompt sync" --interactive -y
 
 marshal profile add work-laptop -y
 marshal profile set work-laptop   # optional; required when marshal.json has profile-scoped items
