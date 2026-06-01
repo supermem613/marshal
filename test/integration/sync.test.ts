@@ -322,7 +322,7 @@ test("sync: app stage is skipped on non-win32 with a recorded failure entry", as
     // Dotfiles pull + no real winget call attempted on darwin — the result is recorded as a failure.
     assert.equal(t.runner.calls.length, 1);
     assert.equal(t.runner.calls[0].command, "git pull --ff-only");
-    assert.ok(t.log.captured.some((l) => l.toLowerCase().includes("win32")));
+    assert.ok(t.log.captured.some((l) => l.toLowerCase().includes("winget not available on darwin")));
   } finally {
     t.cleanup();
     df.cleanup();
