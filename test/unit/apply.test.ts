@@ -7,7 +7,7 @@ import { Plan } from "../../src/plan.js";
 
 // --- installApp: platform skipping ---
 
-test("applyPlan: apps are skipped on darwin", async () => {
+test("applyPlan: apps are skipped on darwin and recorded as non-ok", async () => {
   const t = makeContext({ platform: "darwin" });
   try {
     const plan: Plan = {
@@ -21,7 +21,7 @@ test("applyPlan: apps are skipped on darwin", async () => {
     const results = await applyPlan(t.ctx, plan);
     assert.equal(results.length, 2);
     for (const r of results) {
-      assert.equal(r.ok, true);
+      assert.equal(r.ok, false);
       assert.equal(r.skipped, true);
       assert.ok(r.detail?.includes("winget not available on darwin"));
     }
@@ -32,7 +32,28 @@ test("applyPlan: apps are skipped on darwin", async () => {
   }
 });
 
-test("applyPlan: apps are skipped on linux", async () => {
+test("applyPlan: skipped non-win apps are recorded as non-ok results", async () => {
+  const t = makeContext({ platform: "darwin" });
+  try {
+    const plan: Plan = {
+      apps: [{ id: "Git.Git" }],
+      repos: [],
+      hooks: [],
+      reposPath: join(t.homeDir, "repos"),
+      platform: "darwin",
+      activeProfile: { profile: null, source: "none" },
+    };
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].ok, false);
+    assert.equal(results[0].skipped, true);
+    assert.ok(results[0].detail?.includes("winget not available on darwin"));
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: apps are skipped on linux and recorded as non-ok", async () => {
   const t = makeContext({ platform: "linux" });
   try {
     const plan: Plan = {
@@ -45,7 +66,7 @@ test("applyPlan: apps are skipped on linux", async () => {
     };
     const results = await applyPlan(t.ctx, plan);
     assert.equal(results.length, 1);
-    assert.equal(results[0].ok, true);
+    assert.equal(results[0].ok, false);
     assert.equal(results[0].skipped, true);
     assert.ok(results[0].detail?.includes("linux"));
   } finally {
