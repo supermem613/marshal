@@ -1,6 +1,6 @@
 {
   "name": "marshal",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Bind to a dotfiles repo and provision your CLI tool fleet — clone, build, install, and update everything from one manifest.",
   "type": "module",
   "bin": {
@@ -23,7 +23,8 @@
     "node": ">=24.0.0"
   },
   "os": [
-    "win32"
+    "win32",
+    "darwin"
   ],
   "dependencies": {
     "chalk": "^5.4.1",
@@ -31,7 +32,7 @@
     "zod": "^3.24.4"
   },
   "devDependencies": {
-    "@eslint/js": "^9.18.0",
+    "@eslint/js": "^9.39.4",
     "@types/node": "^24.12.3",
     "eslint": "^9.18.0",
     "globals": "^15.14.0",

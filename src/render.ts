@@ -47,16 +47,24 @@ export function renderPlan(plan: Plan, log: Logger): void {
 export interface ExecutionResult {
   step: string;
   ok: boolean;
+  skipped?: boolean;
   detail?: string;
 }
 
 export function renderResults(results: ExecutionResult[], log: Logger): void {
-  const passed = results.filter((r) => r.ok).length;
-  const failed = results.length - passed;
+  const skipped = results.filter((r) => r.skipped).length;
+  const failed = results.filter((r) => !r.ok && !r.skipped).length;
+  const passed = results.length - failed - skipped;
   log.info("");
-  log.info(`Results: ${passed} ok, ${failed} failed`);
+  const parts = [`${passed} ok`, `${failed} failed`];
+  if (skipped > 0) {
+    parts.push(`${skipped} skipped`);
+  }
+  log.info(`Results: ${parts.join(", ")}`);
   for (const r of results) {
-    if (r.ok) {
+    if (r.skipped) {
+      log.info(`⊘ ${r.step}${r.detail ? ` — ${r.detail}` : ""}`);
+    } else if (r.ok) {
       log.success(`${r.step}${r.detail ? ` — ${r.detail}` : ""}`);
     } else {
       log.error(`${r.step}${r.detail ? ` — ${r.detail}` : ""}`);

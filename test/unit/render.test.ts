@@ -69,3 +69,46 @@ test("renderResults: tallies pass/fail", () => {
   assert.ok(text.includes("1 ok, 1 failed"));
   assert.ok(text.includes("oops"));
 });
+
+test("renderResults: skipped items shown separately from pass/fail", () => {
+  const log = new CaptureLogger();
+  renderResults(
+    [
+      { step: "app: Git.Git", ok: true, skipped: true, detail: "winget not available on darwin" },
+      { step: "app: jqlang.jq", ok: true, skipped: true, detail: "winget not available on darwin" },
+      { step: "repo: tools", ok: true, detail: "cloned" },
+      { step: "hook: sync", ok: false, detail: "command failed" },
+    ],
+    log,
+  );
+  const text = log.captured.join("\n");
+  assert.ok(text.includes("1 ok, 1 failed, 2 skipped"));
+  assert.ok(text.includes("⊘ app: Git.Git"));
+  assert.ok(text.includes("⊘ app: jqlang.jq"));
+});
+
+test("renderResults: no skipped label when nothing is skipped", () => {
+  const log = new CaptureLogger();
+  renderResults(
+    [
+      { step: "repo: a", ok: true },
+      { step: "repo: b", ok: true },
+    ],
+    log,
+  );
+  const text = log.captured.join("\n");
+  assert.ok(text.includes("2 ok, 0 failed"));
+  assert.ok(!text.includes("skipped"));
+});
+
+test("renderResults: all skipped means 0 ok 0 failed N skipped", () => {
+  const log = new CaptureLogger();
+  renderResults(
+    [
+      { step: "app: X", ok: true, skipped: true },
+    ],
+    log,
+  );
+  const text = log.captured.join("\n");
+  assert.ok(text.includes("0 ok, 0 failed, 1 skipped"));
+});

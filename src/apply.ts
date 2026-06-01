@@ -62,8 +62,9 @@ async function installApp(ctx: MarshalContext, app: AppStep): Promise<ExecutionR
   if (ctx.platform !== "win32") {
     return {
       step: `app: ${app.id}`,
-      ok: false,
-      detail: `apps stage only supported on win32 for v1 (current: ${ctx.platform})`,
+      ok: true,
+      skipped: true,
+      detail: `winget not available on ${ctx.platform}`,
     };
   }
   const queryCmd = `winget list --exact --id ${app.id}`;
