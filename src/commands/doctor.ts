@@ -17,12 +17,12 @@ export interface CheckResult {
 
 function checkNode(): CheckResult {
   const major = parseInt(process.versions.node.split(".")[0], 10);
-  if (major < 24) {
+  if (major < 22) {
     return {
       name: "node",
       ok: false,
-      detail: `Node ${process.versions.node} (need >=24)`,
-      hint: "Install Node 24 or later from https://nodejs.org",
+      detail: `Node ${process.versions.node} (need >=22)`,
+      hint: "Install Node 22 or later from https://nodejs.org",
     };
   }
   return { name: "node", ok: true, detail: `Node ${process.versions.node}` };
