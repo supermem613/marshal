@@ -6,6 +6,7 @@ import { Plan } from "../../src/plan.js";
 
 const emptyPlan: Plan = {
   apps: [],
+  npm: [],
   repos: [],
   hooks: [],
   reposPath: "/x",
@@ -23,6 +24,7 @@ test("renderPlan: lists apps + repos", () => {
   const log = new CaptureLogger();
   const plan: Plan = {
     apps: [{ id: "Git.Git" }],
+    npm: [{ name: "typescript" }],
     repos: [
       {
         name: "tool-alpha",

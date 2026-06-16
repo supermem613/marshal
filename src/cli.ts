@@ -15,7 +15,7 @@ import { whereCommand } from "./commands/where.js";
 import { cdCommand, homeCommand } from "./commands/cd.js";
 import { updateCommand } from "./commands/update.js";
 import { initCommand } from "./commands/init.js";
-import { addAppsCommand, addHooksCommand, addReposCommand, removeItemsCommand } from "./commands/add.js";
+import { addAppsCommand, addHooksCommand, addNpmsCommand, addReposCommand, removeItemsCommand } from "./commands/add.js";
 import { profileCommand } from "./commands/profile.js";
 
 const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
@@ -111,12 +111,14 @@ Examples:
   marshal profile set work-laptop
   marshal profile add work-laptop -y
   marshal profile scope app work-laptop Git.Git VSCode -y
+  marshal profile scope npm work-laptop typescript -y
   marshal profile scope repo work-laptop forge marshal -y
   marshal profile unscope hook work-laptop config-sync prompt-sync -y
   marshal profile remove work-laptop -y
 
 Scope kinds:
   app     app id from apps[]
+  npm     npm package name from npm[]
   repo    repo name from repos[]
   hook    hook name from hooks[]
 `)
@@ -170,17 +172,18 @@ profile
 
 profile
   .command("scope <kind> <profile> <items...>")
-  .description("Scope one or more existing apps, repos, or hooks to a declared profile")
+  .description("Scope one or more existing apps, npm packages, repos, or hooks to a declared profile")
   .option("-y, --yes", "Skip confirmation prompt")
   .addHelpText("after", `
 
 Arguments:
-  kind     app, repo, or hook
+  kind     app, npm, repo, or hook
   profile  declared profile name
-  items    one or more app ids, repo names, or hook names
+  items    one or more app ids, npm package names, repo names, or hook names
 
 Examples:
   marshal profile scope app work-laptop Git.Git OpenJS.NodeJS.LTS -y
+  marshal profile scope npm work-laptop typescript typescript-language-server -y
   marshal profile scope repo work-laptop forge marshal -y
   marshal profile scope hook work-laptop config-sync prompt-sync -y
 `)
@@ -190,17 +193,18 @@ Examples:
 
 profile
   .command("unscope <kind> <profile> <items...>")
-  .description("Remove a profile from one or more existing app, repo, or hook scopes")
+  .description("Remove a profile from one or more existing app, npm, repo, or hook scopes")
   .option("-y, --yes", "Skip confirmation prompt")
   .addHelpText("after", `
 
 Arguments:
-  kind     app, repo, or hook
+  kind     app, npm, repo, or hook
   profile  declared profile name
-  items    one or more app ids, repo names, or hook names
+  items    one or more app ids, npm package names, repo names, or hook names
 
 Examples:
   marshal profile unscope app work-laptop Git.Git OpenJS.NodeJS.LTS -y
+  marshal profile unscope npm work-laptop typescript typescript-language-server -y
   marshal profile unscope repo work-laptop forge marshal -y
   marshal profile unscope hook work-laptop config-sync prompt-sync -y
 `)
@@ -276,6 +280,24 @@ Examples:
     process.exit(await addAppsCommand(ctx, [id], opts));
   });
 
+const addNpm = program
+  .command("add-npm <name>")
+  .description("Add one global npm package to the manifest. Run `marshal sync` to apply, or pass --sync.");
+addSchemaListOption(addNpm, "npm", "platforms");
+addSchemaListOption(addNpm, "npm", "profiles");
+addNpm
+  .option("--sync", "Also run sync after writing the manifest")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .addHelpText("after", `
+
+Examples:
+  marshal add-npm typescript -y
+  marshal add-npm typescript-language-server --profiles work-laptop -y
+`)
+  .action(async (name, opts) => {
+    process.exit(await addNpmsCommand(ctx, [name], opts));
+  });
+
 const addHook = program
   .command("add-hook <name>")
   .description("Add one sync hook to the manifest. Run `marshal sync` to apply, or pass --sync.");
@@ -326,6 +348,21 @@ Examples:
   .action(async (id, opts) => {
     process.exit(await removeItemsCommand(ctx, {
       apps: [id],
+    }, { yes: opts.yes, deleteFiles: false }));
+  });
+
+program
+  .command("remove-npm <name>")
+  .description("Remove one global npm package from the manifest")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .addHelpText("after", `
+
+Examples:
+  marshal remove-npm typescript -y
+`)
+  .action(async (name, opts) => {
+    process.exit(await removeItemsCommand(ctx, {
+      npm: [name],
     }, { yes: opts.yes, deleteFiles: false }));
   });
 

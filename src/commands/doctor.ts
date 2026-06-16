@@ -100,7 +100,7 @@ function checkManifest(ctx: MarshalContext): CheckResult {
     return {
       name: "manifest",
       ok: true,
-      detail: `${m.apps.length} app(s), ${m.repos.length} repo(s)`,
+      detail: `${m.apps.length} app(s), ${m.npm.length} npm, ${m.repos.length} repo(s)`,
     };
   } catch (err) {
     if (err instanceof ManifestError) {
@@ -114,6 +114,7 @@ async function runChecks(ctx: MarshalContext): Promise<CheckResult[]> {
   const checks: Array<CheckResult | Promise<CheckResult>> = [
     checkNode(),
     checkExecutable(ctx, "git", "Install Git: winget install Git.Git"),
+    checkExecutable(ctx, "npm", "Install Node.js (bundles npm): winget install OpenJS.NodeJS.LTS"),
   ];
   if (ctx.platform === "win32") {
     checks.push(checkExecutable(ctx, "winget", "Install App Installer from the Microsoft Store"));

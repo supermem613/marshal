@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { MarshalContext } from "./context.js";
-import { Plan, RepoStep, AppStep, HookStep } from "./plan.js";
+import { Plan, RepoStep, AppStep, NpmStep, HookStep } from "./plan.js";
 import { ExecutionResult } from "./render.js";
 import { ProcessError } from "./runners/types.js";
 import { gitPullMadeNoChanges } from "./command-state.js";
@@ -14,6 +14,8 @@ import { gitPullMadeNoChanges } from "./command-state.js";
 export interface ApplyOptions {
   // Skip apps stage entirely (e.g., when caller knows winget is unavailable).
   skipApps?: boolean;
+  // Skip the global npm packages stage entirely.
+  skipNpm?: boolean;
   skipHooks?: boolean;
 }
 
@@ -27,6 +29,12 @@ export async function applyPlan(
   if (!opts.skipApps && plan.apps.length > 0) {
     for (const app of plan.apps) {
       results.push(await installApp(ctx, app));
+    }
+  }
+
+  if (!opts.skipNpm && plan.npm.length > 0) {
+    for (const pkg of plan.npm) {
+      results.push(await installNpmPackage(ctx, pkg));
     }
   }
 
@@ -104,6 +112,46 @@ async function installApp(ctx: MarshalContext, app: AppStep): Promise<ExecutionR
   } catch (err) {
     return {
       step: `app: ${app.id}`,
+      ok: false,
+      detail: (err as Error).message,
+    };
+  }
+}
+
+async function installNpmPackage(ctx: MarshalContext, pkg: NpmStep): Promise<ExecutionResult> {
+  const queryCmd = `npm ls --global --depth=0 ${pkg.name}`;
+  ctx.log.info(`→ ${queryCmd}`);
+  try {
+    const query = await ctx.runner.exec(queryCmd, {
+      cwd: ctx.cwd,
+      inherit: false,
+      allowNonZero: true,
+    });
+    // `npm ls --global --depth=0 <name>` lists `<name>@<version>` when the
+    // package is present. The exit code is unreliable: npm returns non-zero on
+    // unrelated global-tree problems (ELSPROBLEMS, peer-dep gaps) even when the
+    // queried package is installed. Match the listed package, not the exit code.
+    if (new RegExp(`(^|\\s)${escapeRegExp(pkg.name)}@`, "m").test(query.stdout)) {
+      return { step: `npm: ${pkg.name}`, ok: true, detail: "already installed" };
+    }
+  } catch {
+    // Fall through to install. A failed preflight should not block provisioning.
+  }
+  const cmd = `npm install --global ${pkg.name}`;
+  ctx.log.info(`→ ${cmd}`);
+  try {
+    const r = await ctx.runner.exec(cmd, { cwd: ctx.cwd, inherit: false, allowNonZero: true });
+    if (r.code === 0) {
+      return { step: `npm: ${pkg.name}`, ok: true, detail: "installed" };
+    }
+    return {
+      step: `npm: ${pkg.name}`,
+      ok: false,
+      detail: `npm exit ${r.code}: ${(r.stderr || r.stdout).split("\n")[0].slice(0, 200)}`,
+    };
+  } catch (err) {
+    return {
+      step: `npm: ${pkg.name}`,
       ok: false,
       detail: (err as Error).message,
     };

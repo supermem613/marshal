@@ -40,6 +40,27 @@ test("ManifestSchema: accepts full manifest", () => {
   assert.ok(r.success, JSON.stringify(r));
 });
 
+test("ManifestSchema: accepts npm packages and rejects duplicates", () => {
+  const ok = ManifestSchema.safeParse({
+    version: 1,
+    npm: [{ name: "typescript" }, { name: "typescript-language-server", platforms: ["win32"] }],
+  });
+  assert.ok(ok.success, JSON.stringify(ok));
+  const dup = ManifestSchema.safeParse({
+    version: 1,
+    npm: [{ name: "typescript" }, { name: "typescript" }],
+  });
+  assert.equal(dup.success, false);
+});
+
+test("ManifestSchema: defaults npm to empty for legacy manifests", () => {
+  const r = ManifestSchema.safeParse({ version: 1 });
+  assert.ok(r.success);
+  if (r.success) {
+    assert.deepEqual(r.data.npm, []);
+  }
+});
+
 test("cliField: exposes CLI help metadata from manifest schema code", () => {
   assert.deepEqual(cliField("repo", "install_cmd"), {
     cliFlag: "--install-cmd <cmd>",

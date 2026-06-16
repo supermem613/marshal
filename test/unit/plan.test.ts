@@ -11,6 +11,7 @@ function makeManifest(over: Partial<Manifest> = {}): Manifest {
     version: 1,
     profiles: [],
     apps: [],
+    npm: [],
     repos: [],
     hooks: [],
     ...over,

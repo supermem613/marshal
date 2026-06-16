@@ -2,7 +2,7 @@
 
 > Bind to a dotfiles repo and provision your CLI tool fleet — clone, build, install, and update everything from one manifest.
 
-Marshal is a generic, reusable fleet-management CLI. You point it at any dotfiles repo containing a `marshal.json`, and it handles the rest: install OS prerequisites (winget), clone your tool repos, build them, link them, and keep them up to date.
+Marshal is a generic, reusable fleet-management CLI. You point it at any dotfiles repo containing a `marshal.json`, and it handles the rest: install OS prerequisites (winget), install npm global packages, clone your tool repos, build them, link them, and keep them up to date.
 
 ```
 config manager → syncs agent config files between your machine and dotfiles
@@ -38,6 +38,9 @@ marshal add-app OpenJS.NodeJS.LTS -y
 marshal add-app dandavison.delta -y
 marshal add-app Microsoft.DotNet.SDK.9 --platforms win32 -y
 
+marshal add-npm typescript -y
+marshal add-npm typescript-language-server -y
+
 marshal add-hook config-sync --cmd "configsync sync" --interactive -y
 marshal add-hook prompt-sync --cmd "prompt sync" --interactive -y
 
@@ -52,7 +55,7 @@ That flow keeps onboarding simple:
 1. Bind marshal to the customer dotfiles repo.
 2. Add repos, prerequisites, and hooks with CLI commands instead of hand-editing JSON.
 3. Set a machine profile when your manifest has profile-scoped items.
-4. Run one `marshal sync` to install apps, provision repos, and run any configured hooks.
+4. Run one `marshal sync` to install apps, install npm globals, provision repos, and run any configured hooks.
 
 Prerequisites are not installed at `marshal add-app` time. They are installed on
 the next `marshal sync`, and re-running `sync` is safe: marshal checks whether a

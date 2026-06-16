@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { makeContext, makeDotfilesRepo, stubInstalledRepo } from "../helpers.js";
-import { addAppCommand, addCommand, addHookCommand, removeCommand, removeItemsCommand } from "../../src/commands/add.js";
+import { addAppCommand, addCommand, addHookCommand, addNpmCommand, removeCommand, removeItemsCommand } from "../../src/commands/add.js";
 
 test("add: appends repo to manifest without syncing by default", async () => {
   const df = makeDotfilesRepo({ version: 1, profiles: ["work"], apps: [], repos: [] });
@@ -169,6 +169,53 @@ test("add-app: rejects duplicate app id", async () => {
   try {
     const code = await addAppCommand(t.ctx, "Git.Git", { yes: true });
     assert.equal(code, 1);
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("add-npm: appends npm package to manifest without syncing by default", async () => {
+  const df = makeDotfilesRepo({ version: 1, profiles: ["work"], apps: [], npm: [], repos: [] });
+  const t = makeContext({ preBoundTo: df.dir });
+  try {
+    const code = await addNpmCommand(t.ctx, "typescript", { yes: true, profiles: ["work"] });
+    assert.equal(code, 0);
+    const m = JSON.parse(readFileSync(join(df.dir, "marshal.json"), "utf8"));
+    assert.deepEqual(m.npm, [{ name: "typescript", profiles: ["work"] }]);
+    assert.equal(t.runner.calls.length, 4);
+    assert.equal(t.runner.calls[0].command, "git pull --ff-only");
+    assert.ok(t.runner.calls[1].command.startsWith("git add"));
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("add-npm: rejects duplicate npm package", async () => {
+  const df = makeDotfilesRepo({ version: 1, npm: [{ name: "typescript" }], repos: [] });
+  const t = makeContext({ preBoundTo: df.dir });
+  try {
+    const code = await addNpmCommand(t.ctx, "typescript", { yes: true });
+    assert.equal(code, 1);
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("remove: deletes one npm package by kind-specific target", async () => {
+  const df = makeDotfilesRepo({
+    version: 1,
+    npm: [{ name: "typescript" }, { name: "typescript-language-server" }],
+    repos: [],
+  });
+  const t = makeContext({ preBoundTo: df.dir });
+  try {
+    const code = await removeItemsCommand(t.ctx, { npm: ["typescript"] }, { yes: true, deleteFiles: false });
+    assert.equal(code, 0);
+    const m = JSON.parse(readFileSync(join(df.dir, "marshal.json"), "utf8"));
+    assert.deepEqual(m.npm, [{ name: "typescript-language-server" }]);
   } finally {
     t.cleanup();
     df.cleanup();

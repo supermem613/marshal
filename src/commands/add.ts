@@ -10,6 +10,7 @@ import {
   validateManifest,
   Repo,
   App,
+  Npm,
   Hook,
   Manifest,
 } from "../manifest.js";
@@ -195,6 +196,84 @@ export async function addAppsCommand(
   return await syncCommand(ctx, { yes: opts.yes ?? false });
 }
 
+export interface AddNpmOptions {
+  platforms?: string[];
+  profiles?: string[];
+  yes?: boolean;
+  sync?: boolean;
+}
+
+export async function addNpmCommand(
+  ctx: MarshalContext,
+  name: string,
+  opts: AddNpmOptions,
+): Promise<number> {
+  return addNpmsCommand(ctx, [name], opts);
+}
+
+export async function addNpmsCommand(
+  ctx: MarshalContext,
+  names: string[],
+  opts: AddNpmOptions,
+): Promise<number> {
+  const loaded = await loadBoundManifest(ctx);
+  if ("code" in loaded) {
+    return loaded.code;
+  }
+  const { bound, manifest } = loaded;
+  if (names.length === 0) {
+    ctx.log.error("No npm packages provided.");
+    return 2;
+  }
+  const duplicates = findDuplicates(names);
+  if (duplicates.length > 0) {
+    ctx.log.error(`Duplicate npm package(s): ${duplicates.join(", ")}`);
+    return 1;
+  }
+  const existing = names.filter((name) => manifest.npm.some((n) => n.name === name));
+  if (existing.length > 0) {
+    ctx.log.error(`Npm package(s) already in manifest: ${existing.join(", ")}`);
+    return 1;
+  }
+  const platforms = parsePlatforms(opts.platforms);
+  if (platforms && "code" in platforms) {
+    ctx.log.error(platforms.message);
+    return platforms.code;
+  }
+  const newNpm: Npm[] = names.map((name) => ({
+    name,
+    ...(platforms && platforms.length > 0 ? { platforms } : {}),
+    ...(opts.profiles && opts.profiles.length > 0 ? { profiles: opts.profiles } : {}),
+  }));
+  const next: Manifest = {
+    ...manifest,
+    npm: [...manifest.npm, ...newNpm],
+  };
+  validateManifest(next);
+
+  ctx.log.info(`Will add ${newNpm.length} npm package(s) to ${MANIFEST_FILENAME}:`);
+  ctx.log.info(JSON.stringify(newNpm.length === 1 ? newNpm[0] : newNpm, null, 2));
+
+  if (!opts.yes) {
+    const ok = await ctx.prompt.confirm("Apply?");
+    if (!ok) {
+      ctx.log.info("Aborted.");
+      return 0;
+    }
+  }
+
+  const path = join(bound, MANIFEST_FILENAME);
+  writeFileSync(path, JSON.stringify(next, null, 2) + "\n", "utf8");
+  ctx.log.success(`Updated ${path}`);
+  await commitAndPush(ctx, bound, `marshal: add npm ${names.join(", ")}`);
+
+  if (!opts.sync) {
+    ctx.log.info("Run `marshal sync` to apply.");
+    return 0;
+  }
+  return await syncCommand(ctx, { yes: opts.yes ?? false });
+}
+
 export interface AddHookOptions {
   cmd: string;
   cwd?: string;
@@ -290,6 +369,7 @@ export interface RemoveOptions {
   // manifest. Pass --keep-files to leave it in place.
   deleteFiles?: boolean;
   apps?: string[];
+  npm?: string[];
   hooks?: string[];
   repos?: string[];
 }
@@ -302,13 +382,14 @@ export async function removeCommand(
   return removeItemsCommand(ctx, {
     repos: [name, ...(opts.repos ?? [])],
     apps: opts.apps ?? [],
+    npm: opts.npm ?? [],
     hooks: opts.hooks ?? [],
   }, opts);
 }
 
 export async function removeItemsCommand(
   ctx: MarshalContext,
-  targets: { repos?: string[]; apps?: string[]; hooks?: string[] },
+  targets: { repos?: string[]; apps?: string[]; npm?: string[]; hooks?: string[] },
   opts: RemoveOptions,
 ): Promise<number> {
   const loaded = await loadBoundManifest(ctx);
@@ -319,21 +400,26 @@ export async function removeItemsCommand(
 
   const repos = unique(targets.repos ?? []);
   const apps = unique(targets.apps ?? []);
+  const npm = unique(targets.npm ?? []);
   const hooks = unique(targets.hooks ?? []);
-  if (repos.length + apps.length + hooks.length === 0) {
-    ctx.log.error("No apps, hooks, or repos provided.");
+  if (repos.length + apps.length + npm.length + hooks.length === 0) {
+    ctx.log.error("No apps, npm packages, hooks, or repos provided.");
     return 2;
   }
 
   const missingRepos = repos.filter((name) => !manifest.repos.some((r) => r.name === name));
   const missingApps = apps.filter((id) => !manifest.apps.some((a) => a.id === id));
+  const missingNpm = npm.filter((name) => !manifest.npm.some((n) => n.name === name));
   const missingHooks = hooks.filter((name) => !manifest.hooks.some((h) => h.name === name));
-  if (missingRepos.length + missingApps.length + missingHooks.length > 0) {
+  if (missingRepos.length + missingApps.length + missingNpm.length + missingHooks.length > 0) {
     if (missingRepos.length > 0) {
       ctx.log.error(`Repo(s) not in manifest: ${missingRepos.join(", ")}`);
     }
     if (missingApps.length > 0) {
       ctx.log.error(`App(s) not in manifest: ${missingApps.join(", ")}`);
+    }
+    if (missingNpm.length > 0) {
+      ctx.log.error(`Npm package(s) not in manifest: ${missingNpm.join(", ")}`);
     }
     if (missingHooks.length > 0) {
       ctx.log.error(`Hook(s) not in manifest: ${missingHooks.join(", ")}`);
@@ -344,6 +430,7 @@ export async function removeItemsCommand(
   const summary = [
     repos.length > 0 ? `${repos.length} repo(s)` : "",
     apps.length > 0 ? `${apps.length} app(s)` : "",
+    npm.length > 0 ? `${npm.length} npm package(s)` : "",
     hooks.length > 0 ? `${hooks.length} hook(s)` : "",
   ].filter(Boolean).join(", ");
   ctx.log.info(`Will remove ${summary} from ${MANIFEST_FILENAME}.`);
@@ -360,10 +447,12 @@ export async function removeItemsCommand(
 
   const repoSet = new Set(repos);
   const appSet = new Set(apps);
+  const npmSet = new Set(npm);
   const hookSet = new Set(hooks);
   const next = {
     ...manifest,
     apps: manifest.apps.filter((a) => !appSet.has(a.id)),
+    npm: manifest.npm.filter((n) => !npmSet.has(n.name)),
     repos: manifest.repos.filter((r) => !repoSet.has(r.name)),
     hooks: manifest.hooks.filter((h) => !hookSet.has(h.name)),
   };

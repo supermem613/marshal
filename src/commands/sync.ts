@@ -76,7 +76,7 @@ export async function syncCommand(ctx: MarshalContext, opts: SyncOptions): Promi
 
   renderPlan(plan, ctx.log);
 
-  if (plan.apps.length + plan.repos.length === 0) {
+  if (plan.apps.length + plan.npm.length + plan.repos.length === 0) {
     return 0;
   }
 

@@ -11,7 +11,7 @@ Marshal reads two JSON files:
 
 Single source of truth for what apps and tools a machine should have. Items are shared by default; add `profiles` when an app, repo, or hook should apply only to specific machine profiles.
 
-The manifest stores `apps`, `repos`, and `hooks` as arrays because a machine fleet has many items. The mutation CLI intentionally edits one item per command (`marshal add <url>`, `marshal add-app <id>`, `marshal add-hook <name>`, and the matching remove commands) so each change is explicit and has one confirmation. CLI help for manifest-backed add options is generated from the field metadata in the schema code.
+The manifest stores `apps`, `npm`, `repos`, and `hooks` as arrays because a machine fleet has many items. The mutation CLI intentionally edits one item per command (`marshal add <url>`, `marshal add-app <id>`, `marshal add-npm <name>`, `marshal add-hook <name>`, and the matching remove commands) so each change is explicit and has one confirmation. CLI help for manifest-backed add options is generated from the field metadata in the schema code.
 
 ```jsonc
 {
@@ -24,6 +24,11 @@ The manifest stores `apps`, `repos`, and `hooks` as arrays because a machine fle
     { "id": "OpenJS.NodeJS.LTS", "profiles": ["work-laptop", "personal-desktop"] },
     { "id": "dandavison.delta" },
     { "id": "Microsoft.DotNet.SDK.9", "platforms": ["win32"], "profiles": ["work-laptop"] }
+  ],
+
+  "npm": [                            // npm global packages (cross-platform)
+    { "name": "typescript" },
+    { "name": "typescript-language-server", "profiles": ["work-laptop"] }
   ],
 
   "repos": [
@@ -76,6 +81,7 @@ The manifest stores `apps`, `repos`, and `hooks` as arrays because a machine fle
 | `reposPath` | | `~/repos` | Where tool repos are cloned. Tilde expansion supported. |
 | `profiles` | | `[]` | Declared profile names. Any item-level profile must appear here. |
 | `apps` | | `[]` | Winget packages installed before any repos. |
+| `npm` | | `[]` | npm global packages installed after apps, before repos. |
 | `repos` | | `[]` | Tool repos cloned, built, and updated. |
 | `hooks` | | `[]` | Extra sync steps. v1 supports post-repo hooks such as `configsync sync`. |
 
@@ -84,6 +90,14 @@ The manifest stores `apps`, `repos`, and `hooks` as arrays because a machine fle
 | Field | Required | Notes |
 |-------|----------|-------|
 | `id` | ✅ | Winget package identifier (e.g. `Git.Git`, `OpenJS.NodeJS.LTS`, `dandavison.delta`). |
+| `platforms` | | Array of `win32` / `darwin` / `linux`. Absent = all platforms. |
+| `profiles` | | Array of declared profile names. Absent = shared across all profiles. |
+
+**Per-npm entry (`npm[]`):**
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `name` | ✅ | npm package name installed globally (e.g. `typescript`, `typescript-language-server`). |
 | `platforms` | | Array of `win32` / `darwin` / `linux`. Absent = all platforms. |
 | `profiles` | | Array of declared profile names. Absent = shared across all profiles. |
 
@@ -163,6 +177,13 @@ For each repo applicable to the current platform, marshal picks one action:
 - Marshal first checks `winget list --exact --id <app>` and only runs `winget install --exact --id <app>` when the package is missing.
 - Re-running `marshal sync` is safe: already-installed apps short-circuit before install, and install-time "already installed" responses are still treated as success.
 
+### Npm execution
+
+- npm global packages are installed during `marshal sync` after apps and before any repo steps run.
+- Marshal first checks `npm ls --global --depth=0 <name>` and only runs `npm install --global <name>` when the package is missing.
+- Unlike apps, npm packages are cross-platform and are not skipped on non-Windows machines.
+- Re-running `marshal sync` is safe: already-installed packages short-circuit before install.
+
 ### Repo execution
 
 - Repos are provisioned during `marshal sync`.
@@ -172,7 +193,7 @@ For each repo applicable to the current platform, marshal picks one action:
 
 ### Platform filtering
 
-Apps and repos with no `platforms` field apply to every platform. With one or more platforms listed, the row applies only when the current platform is in the list. Marshal is Windows-first today; the schema accepts `darwin` and `linux` for forward compatibility.
+Apps and repos with no `platforms` field apply to every platform. With one or more platforms listed, the row applies only when the current platform is in the list. Marshal is Windows-first today; the schema accepts `darwin` and `linux` for forward compatibility. npm packages follow the same `platforms` rule but, unlike apps, run on every platform by default.
 
 ---
 
@@ -201,13 +222,14 @@ marshal profile get
 marshal profile list
 marshal profile clear
 marshal profile scope app work-laptop Git.Git OpenJS.NodeJS.LTS
+marshal profile scope npm work-laptop typescript typescript-language-server
 marshal profile unscope hook work-laptop config-sync prompt-sync
 marshal profile remove work-laptop
 ```
 
 The binding refuses to point at a directory that doesn't contain a `marshal.json`, so you can't accidentally bind to a non-marshal repo.
 
-`profile` is optional for legacy manifests. Once the manifest contains profile-scoped items, set it with `marshal profile set <name>` before syncing. Re-binding preserves the existing local profile; sync re-validates it against the newly bound manifest. Use `profile add` and `profile remove` for the shared manifest's declared profiles. Use `profile scope <app|repo|hook> <profile> <items...>` and `profile unscope <app|repo|hook> <profile> <items...>` to update one or more existing item scopes.
+`profile` is optional for legacy manifests. Once the manifest contains profile-scoped items, set it with `marshal profile set <name>` before syncing. Re-binding preserves the existing local profile; sync re-validates it against the newly bound manifest. Use `profile add` and `profile remove` for the shared manifest's declared profiles. Use `profile scope <app|npm|repo|hook> <profile> <items...>` and `profile unscope <app|npm|repo|hook> <profile> <items...>` to update one or more existing item scopes.
 
 ### Multiple machines
 

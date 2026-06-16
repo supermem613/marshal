@@ -21,12 +21,18 @@ interface AppStatusRow {
   applies: boolean;
 }
 
+interface NpmStatusRow {
+  name: string;
+  applies: boolean;
+}
+
 interface StatusReport {
   bound: string;
   platform: string;
   profile: string | null;
   profileSource: string;
   apps: AppStatusRow[];
+  npm: NpmStatusRow[];
   repos: RepoStatusRow[];
 }
 
@@ -73,10 +79,15 @@ export async function statusCommand(ctx: MarshalContext, opts: StatusOptions): P
   });
   const planRepoNames = new Set(plan.repos.map((r) => r.name));
   const planAppIds = new Set(plan.apps.map((a) => a.id));
+  const planNpmNames = new Set(plan.npm.map((n) => n.name));
 
   const apps: AppStatusRow[] = manifest.apps.map((a) => ({
     id: a.id,
     applies: planAppIds.has(a.id),
+  }));
+  const npm: NpmStatusRow[] = manifest.npm.map((n) => ({
+    name: n.name,
+    applies: planNpmNames.has(n.name),
   }));
   const repos: RepoStatusRow[] = manifest.repos.map((r) => {
     const planRow = plan.repos.find((p) => p.name === r.name);
@@ -95,6 +106,7 @@ export async function statusCommand(ctx: MarshalContext, opts: StatusOptions): P
     profile: activeProfile.profile,
     profileSource: activeProfile.source,
     apps,
+    npm,
     repos,
   };
 
@@ -112,6 +124,14 @@ export async function statusCommand(ctx: MarshalContext, opts: StatusOptions): P
     for (const a of apps) {
       const tag = a.applies ? "  applies " : "  skipped ";
       ctx.log.info(`${tag} ${a.id}`);
+    }
+    ctx.log.info("");
+  }
+  if (npm.length > 0) {
+    ctx.log.info("Npm:");
+    for (const n of npm) {
+      const tag = n.applies ? "  applies " : "  skipped ";
+      ctx.log.info(`${tag} ${n.name}`);
     }
     ctx.log.info("");
   }

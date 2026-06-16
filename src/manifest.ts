@@ -10,7 +10,7 @@ import { SUPPORTED_PLATFORMS } from "./platform.js";
 
 export const MANIFEST_FILENAME = "marshal.json";
 
-export type ManifestItemKind = "app" | "repo" | "hook";
+export type ManifestItemKind = "app" | "npm" | "repo" | "hook";
 
 export interface ManifestFieldDoc {
   description: string;
@@ -22,6 +22,21 @@ export const ManifestFieldDocs = {
   app: {
     id: {
       description: "Winget package identifier.",
+    },
+    platforms: {
+      description: "Array of platform names. Absent means all platforms.",
+      cliFlag: "--platforms <list>",
+      cliDescription: "Comma-separated platform list (win32,darwin,linux)",
+    },
+    profiles: {
+      description: "Array of declared profile names. Absent means shared across all profiles.",
+      cliFlag: "--profiles <list>",
+      cliDescription: "Comma-separated profile list declared in marshal.json",
+    },
+  },
+  npm: {
+    name: {
+      description: "Global npm package name (e.g. typescript, typescript-language-server).",
     },
     platforms: {
       description: "Array of platform names. Absent means all platforms.",
@@ -125,6 +140,12 @@ const AppSchema = z.object({
   profiles: z.array(ProfileNameSchema).optional().describe(ManifestFieldDocs.app.profiles.description),
 });
 
+const NpmSchema = z.object({
+  name: z.string().min(1, "npm.name required").describe(ManifestFieldDocs.npm.name.description),
+  platforms: z.array(PlatformSchema).optional().describe(ManifestFieldDocs.npm.platforms.description),
+  profiles: z.array(ProfileNameSchema).optional().describe(ManifestFieldDocs.npm.profiles.description),
+});
+
 const RepoSchema = z.object({
   name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/i, "repo.name must be alphanumeric/hyphen").describe(ManifestFieldDocs.repo.name.description),
   url: z.string().min(1, "repo.url required").describe(ManifestFieldDocs.repo.url.description),
@@ -150,6 +171,7 @@ export const ManifestSchema = z.object({
   reposPath: z.string().optional(),
   profiles: z.array(ProfileNameSchema).default([]),
   apps: z.array(AppSchema).default([]),
+  npm: z.array(NpmSchema).default([]),
   repos: z.array(RepoSchema).default([]),
   hooks: z.array(HookSchema).default([]),
 }).superRefine((m, ctx) => {
@@ -182,6 +204,18 @@ export const ManifestSchema = z.object({
     });
   };
   m.apps.forEach((a, i) => validateProfiles(a.profiles, ["apps", i]));
+  const seenNpm = new Set<string>();
+  m.npm.forEach((n, i) => {
+    validateProfiles(n.profiles, ["npm", i]);
+    if (seenNpm.has(n.name)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["npm", i, "name"],
+        message: `duplicate npm package: ${n.name}`,
+      });
+    }
+    seenNpm.add(n.name);
+  });
   const seenRepos = new Set<string>();
   m.repos.forEach((r, i) => {
     validateProfiles(r.profiles, ["repos", i]);
@@ -231,6 +265,7 @@ export const ManifestSchema = z.object({
 
 export type Manifest = z.infer<typeof ManifestSchema>;
 export type App = z.infer<typeof AppSchema>;
+export type Npm = z.infer<typeof NpmSchema>;
 export type Repo = z.infer<typeof RepoSchema>;
 export type Hook = z.infer<typeof HookSchema>;
 

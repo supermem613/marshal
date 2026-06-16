@@ -140,7 +140,7 @@ test("list: prints declared and item profiles", async () => {
     const text = t.log.captured.join("\n");
     assert.ok(text.includes("profile:  work (binding)"));
     assert.ok(text.includes("profiles (1)"));
-    assert.ok(text.includes("work") && text.includes("1 apps, 1 repos, 1 hooks"));
+    assert.ok(text.includes("work") && text.includes("1 apps, 0 npm, 1 repos, 1 hooks"));
     assert.ok(text.includes("Git.Git") && text.includes("scope: work"));
     assert.ok(text.includes("tool-suite") && text.includes("scope: work"));
     assert.ok(text.includes("config-sync") && text.includes("scope: work"));

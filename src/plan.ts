@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { Manifest, Repo, App, Hook } from "./manifest.js";
+import { Manifest, Repo, App, Npm, Hook } from "./manifest.js";
 import { Platform, appliesToPlatform } from "./platform.js";
 import { resolvePath, expandHome, DEFAULT_REPOS_PATH } from "./paths.js";
 import { ActiveProfile, profileApplies } from "./profile.js";
@@ -32,6 +32,10 @@ export interface AppStep {
   id: string;
 }
 
+export interface NpmStep {
+  name: string;
+}
+
 export interface HookStep {
   name: string;
   stage: "post-repos";
@@ -42,6 +46,7 @@ export interface HookStep {
 
 export interface Plan {
   apps: AppStep[];
+  npm: NpmStep[];
   repos: RepoStep[];
   hooks: HookStep[];
   reposPath: string;     // absolute path of the resolved reposPath (for display)
@@ -74,6 +79,11 @@ export function buildPlan(manifest: Manifest, opts: BuildPlanOptions): Plan {
     .filter((a: App) => appliesToPlatform(a.platforms as Platform[] | undefined, opts.platform))
     .filter((a) => profileApplies(a.profiles, activeProfile.profile))
     .map((a) => ({ id: a.id }));
+
+  const npm: NpmStep[] = manifest.npm
+    .filter((n: Npm) => appliesToPlatform(n.platforms as Platform[] | undefined, opts.platform))
+    .filter((n) => profileApplies(n.profiles, activeProfile.profile))
+    .map((n) => ({ name: n.name }));
 
   const repos: RepoStep[] = manifest.repos
     .filter((r: Repo) => appliesToPlatform(r.platforms as Platform[] | undefined, opts.platform))
@@ -120,7 +130,7 @@ export function buildPlan(manifest: Manifest, opts: BuildPlanOptions): Plan {
         interactive: h.interactive,
       }));
 
-  return { apps, repos, hooks, reposPath, platform: opts.platform, activeProfile };
+  return { apps, npm, repos, hooks, reposPath, platform: opts.platform, activeProfile };
 }
 
 // Verify a filter resolved to all real repo names — surface typos before

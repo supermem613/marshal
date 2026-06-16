@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { MarshalContext } from "../context.js";
 import { requireBinding, BindingError } from "../binding.js";
-import { App, Hook, readManifest, Manifest, ManifestError, Repo } from "../manifest.js";
+import { App, Hook, Npm, readManifest, Manifest, ManifestError, Repo } from "../manifest.js";
 import { buildPlan } from "../plan.js";
 import { formatActiveProfile, profileApplies, ProfileError, resolveActiveProfile } from "../profile.js";
 
@@ -65,6 +65,7 @@ export async function listCommand(ctx: MarshalContext, opts: ListOptions): Promi
       reposPath: plan.reposPath,
       profiles: manifest.profiles,
       apps: manifest.apps,
+      npm: manifest.npm,
       repos: manifest.repos,
       hooks: manifest.hooks,
     }, null, 2) + "\n");
@@ -72,6 +73,7 @@ export async function listCommand(ctx: MarshalContext, opts: ListOptions): Promi
   }
 
   const planAppIds = new Set(plan.apps.map((a) => a.id));
+  const planNpmNames = new Set(plan.npm.map((n) => n.name));
   const planRepoNames = new Set(plan.repos.map((r) => r.name));
   const planHookNames = new Set(plan.hooks.map((h) => h.name));
 
@@ -83,10 +85,11 @@ export async function listCommand(ctx: MarshalContext, opts: ListOptions): Promi
   ctx.log.dim(`  │  repos:    ${plan.reposPath}`);
   renderProfiles(ctx, manifest, activeProfile.profile);
   renderApps(ctx, manifest.apps, planAppIds);
+  renderNpm(ctx, manifest.npm, planNpmNames);
   renderRepos(ctx, manifest.repos, planRepoNames);
   renderHooks(ctx, manifest.hooks, planHookNames);
   ctx.log.dim("  │");
-  ctx.log.info(chalk.cyan(`  └─ ${manifest.apps.length} apps, ${manifest.repos.length} repos, ${manifest.hooks.length} hooks`));
+  ctx.log.info(chalk.cyan(`  └─ ${manifest.apps.length} apps, ${manifest.npm.length} npm, ${manifest.repos.length} repos, ${manifest.hooks.length} hooks`));
   ctx.log.info("");
   ctx.log.dim(`  Legend: ${chalk.green("◉")} applies  ${chalk.dim("○")} skipped  scope: shared means every profile`);
   return 0;
@@ -117,6 +120,19 @@ function renderApps(ctx: MarshalContext, apps: App[], planAppIds: Set<string>): 
   for (const app of apps) {
     const applies = planAppIds.has(app.id);
     ctx.log.info(`  │    ${indicator(applies)} ${app.id.padEnd(24)} ${scopeLabel(app.profiles)}${platformLabel(app.platforms)}`);
+  }
+}
+
+function renderNpm(ctx: MarshalContext, npm: Npm[], planNpmNames: Set<string>): void {
+  ctx.log.dim("  │");
+  ctx.log.info(chalk.bold(`  │  npm (${npm.length})`));
+  if (npm.length === 0) {
+    ctx.log.dim("  │    (none)");
+    return;
+  }
+  for (const pkg of npm) {
+    const applies = planNpmNames.has(pkg.name);
+    ctx.log.info(`  │    ${indicator(applies)} ${pkg.name.padEnd(24)} ${scopeLabel(pkg.profiles)}${platformLabel(pkg.platforms)}`);
   }
 }
 
@@ -180,7 +196,8 @@ function platformLabel(platforms: string[] | undefined): string {
 
 function profileCounts(manifest: Manifest, profile: string): string {
   const apps = manifest.apps.filter((app) => profileApplies(app.profiles, profile)).length;
+  const npm = manifest.npm.filter((pkg) => profileApplies(pkg.profiles, profile)).length;
   const repos = manifest.repos.filter((repo) => profileApplies(repo.profiles, profile)).length;
   const hooks = manifest.hooks.filter((hook) => profileApplies(hook.profiles, profile)).length;
-  return `${apps} apps, ${repos} repos, ${hooks} hooks`;
+  return `${apps} apps, ${npm} npm, ${repos} repos, ${hooks} hooks`;
 }

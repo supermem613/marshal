@@ -17,6 +17,7 @@ export class ProfileError extends Error {
 
 export function hasProfileScopedItems(manifest: Manifest): boolean {
   return manifest.apps.some((a) => hasProfiles(a.profiles))
+    || manifest.npm.some((n) => hasProfiles(n.profiles))
     || manifest.repos.some((r) => hasProfiles(r.profiles))
     || manifest.hooks.some((h) => hasProfiles(h.profiles));
 }
