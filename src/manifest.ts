@@ -10,7 +10,7 @@ import { SUPPORTED_PLATFORMS } from "./platform.js";
 
 export const MANIFEST_FILENAME = "marshal.json";
 
-export type ManifestItemKind = "app" | "npm" | "repo" | "hook";
+export type ManifestItemKind = "app" | "npm" | "repo" | "hook" | "setup";
 
 export interface ManifestFieldDoc {
   description: string;
@@ -117,6 +117,36 @@ export const ManifestFieldDocs = {
       cliDescription: "Comma-separated profile list declared in marshal.json",
     },
   },
+  setup: {
+    name: {
+      description: "Kebab-case unique identifier for plan and results output.",
+    },
+    cmd: {
+      description: "Shell command to run once during setup, typically an interactive authentication.",
+      cliFlag: "--cmd <cmd>",
+      cliDescription: "Shell command to run during setup",
+    },
+    check_cmd: {
+      description: "Command whose exit 0 means the step is already satisfied. When it passes the step is skipped. Absent steps prompt for confirmation before running.",
+      cliFlag: "--check-cmd <cmd>",
+      cliDescription: "Command whose exit 0 marks the step already satisfied",
+    },
+    interactive: {
+      description: "Whether the setup command runs with a real terminal attached. Defaults to true so authentication prompts work.",
+      cliFlag: "--no-interactive",
+      cliDescription: "Run the setup command without a real terminal attached",
+    },
+    platforms: {
+      description: "Array of platform names. Absent means all platforms.",
+      cliFlag: "--platforms <list>",
+      cliDescription: "Comma-separated platform list (win32,darwin,linux)",
+    },
+    profiles: {
+      description: "Array of declared profile names. Absent means shared across all profiles.",
+      cliFlag: "--profiles <list>",
+      cliDescription: "Comma-separated profile list declared in marshal.json",
+    },
+  },
 } as const satisfies Record<ManifestItemKind, Record<string, ManifestFieldDoc>>;
 
 export function cliField(kind: ManifestItemKind, field: string): Required<Pick<ManifestFieldDoc, "cliFlag" | "cliDescription">> {
@@ -166,6 +196,15 @@ const HookSchema = z.object({
   profiles: z.array(ProfileNameSchema).optional().describe(ManifestFieldDocs.hook.profiles.description),
 });
 
+const SetupSchema = z.object({
+  name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/i, "setup.name must be alphanumeric/hyphen").describe(ManifestFieldDocs.setup.name.description),
+  cmd: z.string().min(1, "setup.cmd required").describe(ManifestFieldDocs.setup.cmd.description),
+  check_cmd: z.string().min(1).nullable().optional().describe(ManifestFieldDocs.setup.check_cmd.description),
+  interactive: z.boolean().optional().default(true).describe(ManifestFieldDocs.setup.interactive.description),
+  platforms: z.array(PlatformSchema).optional().describe(ManifestFieldDocs.setup.platforms.description),
+  profiles: z.array(ProfileNameSchema).optional().describe(ManifestFieldDocs.setup.profiles.description),
+});
+
 export const ManifestSchema = z.object({
   version: z.literal(1),
   reposPath: z.string().optional(),
@@ -174,6 +213,7 @@ export const ManifestSchema = z.object({
   npm: z.array(NpmSchema).default([]),
   repos: z.array(RepoSchema).default([]),
   hooks: z.array(HookSchema).default([]),
+  setup: z.array(SetupSchema).default([]),
 }).superRefine((m, ctx) => {
   const seenProfiles = new Set<string>();
   m.profiles.forEach((profile, i) => {
@@ -261,6 +301,18 @@ export const ManifestSchema = z.object({
       });
     }
   });
+  const seenSetup = new Set<string>();
+  m.setup.forEach((s, i) => {
+    validateProfiles(s.profiles, ["setup", i]);
+    if (seenSetup.has(s.name)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["setup", i, "name"],
+        message: `duplicate setup step: ${s.name}`,
+      });
+    }
+    seenSetup.add(s.name);
+  });
 });
 
 export type Manifest = z.infer<typeof ManifestSchema>;
@@ -268,6 +320,7 @@ export type App = z.infer<typeof AppSchema>;
 export type Npm = z.infer<typeof NpmSchema>;
 export type Repo = z.infer<typeof RepoSchema>;
 export type Hook = z.infer<typeof HookSchema>;
+export type Setup = z.infer<typeof SetupSchema>;
 
 export class ManifestError extends Error {
   constructor(message: string, public readonly path?: string) {

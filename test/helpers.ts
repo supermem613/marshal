@@ -24,6 +24,7 @@ export interface MakeContextOptions {
   platform?: Platform;
   cwd?: string;
   promptAnswers?: boolean[];
+  promptSelections?: string[];
   marshalSourceDir?: string;
   // If provided, the binding file is pre-written with this dotfilesRepo path.
   preBoundTo?: string;
@@ -34,7 +35,7 @@ export function makeContext(opts: MakeContextOptions = {}): TestContext {
   const homeDir = mkdtempSync(join(tmpdir(), "marshal-ctx-"));
   const runner = new MockProcessRunner();
   const log = new CaptureLogger();
-  const prompt = new CannedPrompter(opts.promptAnswers ?? []);
+  const prompt = new CannedPrompter(opts.promptAnswers ?? [], opts.promptSelections ?? []);
   const bindingPath = join(homeDir, ".marshal.json");
   if (opts.preBoundTo) {
     writeFileSync(

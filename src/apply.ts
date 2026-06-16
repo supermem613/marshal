@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { MarshalContext } from "./context.js";
-import { Plan, RepoStep, AppStep, NpmStep, HookStep } from "./plan.js";
+import { Plan, RepoStep, AppStep, NpmStep, HookStep, SetupStep } from "./plan.js";
 import { ExecutionResult } from "./render.js";
 import { ProcessError } from "./runners/types.js";
 import { gitPullMadeNoChanges } from "./command-state.js";
@@ -17,6 +17,9 @@ export interface ApplyOptions {
   // Skip the global npm packages stage entirely.
   skipNpm?: boolean;
   skipHooks?: boolean;
+  // Skip the one-time setup stage. Setup steps only appear in the plan when
+  // `marshal setup` opts in, so this is mostly a test bypass.
+  skipSetup?: boolean;
 }
 
 export async function applyPlan(
@@ -25,6 +28,14 @@ export async function applyPlan(
   opts: ApplyOptions = {},
 ): Promise<ExecutionResult[]> {
   const results: ExecutionResult[] = [];
+
+  // Setup runs first so authentications complete before any clone or install
+  // that depends on them.
+  if (!opts.skipSetup && plan.setup.length > 0) {
+    for (const step of plan.setup) {
+      results.push(await runSetupStep(ctx, step));
+    }
+  }
 
   if (!opts.skipApps && plan.apps.length > 0) {
     for (const app of plan.apps) {
@@ -155,6 +166,46 @@ async function installNpmPackage(ctx: MarshalContext, pkg: NpmStep): Promise<Exe
       ok: false,
       detail: (err as Error).message,
     };
+  }
+}
+
+async function runSetupStep(ctx: MarshalContext, step: SetupStep): Promise<ExecutionResult> {
+  // check_cmd is the idempotency oracle. Exit 0 means the step is already
+  // satisfied, so we skip the (often interactive) run. Steps without a
+  // check_cmd always run.
+  if (step.checkCmd) {
+    ctx.log.info(`→ ${step.checkCmd}`);
+    try {
+      const check = await ctx.runner.exec(step.checkCmd, {
+        cwd: step.cwd,
+        inherit: false,
+        allowNonZero: true,
+      });
+      if (check.code === 0) {
+        return { step: `setup: ${step.name}`, ok: true, skipped: true, detail: "already satisfied" };
+      }
+    } catch {
+      // A failed check is not authoritative — fall through and run the step.
+    }
+  }
+  ctx.log.info(`→ (${step.cwd}) ${step.command}`);
+  try {
+    const result = await ctx.runner.exec(step.command, {
+      cwd: step.cwd,
+      inherit: step.interactive,
+      interactive: step.interactive,
+    });
+    const detail = step.interactive
+      ? "completed"
+      : (result.stdout || result.stderr).trim().split("\n")[0] || "completed";
+    return { step: `setup: ${step.name}`, ok: true, detail };
+  } catch (err) {
+    if (err instanceof ProcessError) {
+      const output = (err.result.stderr || err.result.stdout).trim().split("\n")[0];
+      const detail = output || `command failed (exit ${err.result.code})`;
+      return { step: `setup: ${step.name}`, ok: false, detail };
+    }
+    return { step: `setup: ${step.name}`, ok: false, detail: (err as Error).message };
   }
 }
 

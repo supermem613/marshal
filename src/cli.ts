@@ -9,13 +9,14 @@ import { cliField, ManifestItemKind } from "./manifest.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { bindCommand } from "./commands/bind.js";
 import { syncCommand } from "./commands/sync.js";
+import { setupCommand } from "./commands/setup.js";
 import { statusCommand } from "./commands/status.js";
 import { listCommand } from "./commands/list.js";
 import { whereCommand } from "./commands/where.js";
 import { cdCommand, homeCommand } from "./commands/cd.js";
 import { updateCommand } from "./commands/update.js";
 import { initCommand } from "./commands/init.js";
-import { addAppsCommand, addHooksCommand, addNpmsCommand, addReposCommand, removeItemsCommand } from "./commands/add.js";
+import { addAppsCommand, addHooksCommand, addNpmsCommand, addReposCommand, addSetupsCommand, removeItemsCommand } from "./commands/add.js";
 import { profileCommand } from "./commands/profile.js";
 
 const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
@@ -85,6 +86,35 @@ program
   });
 
 program
+  .command("setup")
+  .description("One-time machine bootstrap: pick the machine profile, run one-time setup steps (authentications), then sync.")
+  .option("--profile <name>", "Use this profile instead of selecting interactively")
+  .option("--status", "Report the resolved profile and which setup steps are already satisfied, then exit")
+  .option("--force", "Re-select the machine profile even if one is already bound")
+  .option("--no-sync", "Record the chosen profile only; skip the sync that runs setup steps")
+  .option("-y, --yes", "Skip confirmation prompts")
+  .addHelpText("after", `
+
+Run this once on a fresh machine after \`marshal bind\`. It selects the
+machine profile, runs the manifest's one-time setup steps (typically
+authentications such as \`gh auth login\`), then provisions the fleet.
+
+Examples:
+  marshal setup
+  marshal setup --profile work-laptop -y
+  marshal setup --status
+`)
+  .action(async (opts) => {
+    process.exit(await setupCommand(ctx, {
+      profile: opts.profile,
+      yes: opts.yes,
+      sync: opts.sync,
+      status: opts.status,
+      force: opts.force,
+    }));
+  });
+
+program
   .command("status")
   .description("Show what is bound, what applies to this platform, and what is installed")
   .option("--json", "Emit machine-readable JSON")
@@ -121,6 +151,7 @@ Scope kinds:
   npm     npm package name from npm[]
   repo    repo name from repos[]
   hook    hook name from hooks[]
+  setup   setup step name from setup[]
 `)
   .action(async () => {
     process.exit(await profileCommand(ctx, "get"));
@@ -172,20 +203,21 @@ profile
 
 profile
   .command("scope <kind> <profile> <items...>")
-  .description("Scope one or more existing apps, npm packages, repos, or hooks to a declared profile")
+  .description("Scope one or more existing apps, npm packages, repos, hooks, or setup steps to a declared profile")
   .option("-y, --yes", "Skip confirmation prompt")
   .addHelpText("after", `
 
 Arguments:
-  kind     app, npm, repo, or hook
+  kind     app, npm, repo, hook, or setup
   profile  declared profile name
-  items    one or more app ids, npm package names, repo names, or hook names
+  items    one or more app ids, npm package names, repo names, hook names, or setup step names
 
 Examples:
   marshal profile scope app work-laptop Git.Git OpenJS.NodeJS.LTS -y
   marshal profile scope npm work-laptop typescript typescript-language-server -y
   marshal profile scope repo work-laptop forge marshal -y
   marshal profile scope hook work-laptop config-sync prompt-sync -y
+  marshal profile scope setup work-laptop gh-auth az-login -y
 `)
   .action(async (kind, name, items, opts) => {
     process.exit(await profileCommand(ctx, "scope", kind, items, name, opts));
@@ -193,20 +225,21 @@ Examples:
 
 profile
   .command("unscope <kind> <profile> <items...>")
-  .description("Remove a profile from one or more existing app, npm, repo, or hook scopes")
+  .description("Remove a profile from one or more existing app, npm, repo, hook, or setup scopes")
   .option("-y, --yes", "Skip confirmation prompt")
   .addHelpText("after", `
 
 Arguments:
-  kind     app, npm, repo, or hook
+  kind     app, npm, repo, hook, or setup
   profile  declared profile name
-  items    one or more app ids, npm package names, repo names, or hook names
+  items    one or more app ids, npm package names, repo names, hook names, or setup step names
 
 Examples:
   marshal profile unscope app work-laptop Git.Git OpenJS.NodeJS.LTS -y
   marshal profile unscope npm work-laptop typescript typescript-language-server -y
   marshal profile unscope repo work-laptop forge marshal -y
   marshal profile unscope hook work-laptop config-sync prompt-sync -y
+  marshal profile unscope setup work-laptop gh-auth az-login -y
 `)
   .action(async (kind, name, items, opts) => {
     process.exit(await profileCommand(ctx, "unscope", kind, items, name, opts));
@@ -318,6 +351,30 @@ Examples:
     process.exit(await addHooksCommand(ctx, [name], opts));
   });
 
+const addSetup = program
+  .command("add-setup <name>")
+  .description("Add one one-time setup step to the manifest. Run `marshal setup` to apply.");
+addRequiredSchemaOption(addSetup, "setup", "cmd");
+addSchemaOption(addSetup, "setup", "check_cmd");
+addSchemaOption(addSetup, "setup", "interactive");
+addSchemaListOption(addSetup, "setup", "platforms");
+addSchemaListOption(addSetup, "setup", "profiles");
+addSetup
+  .option("-y, --yes", "Skip confirmation prompt")
+  .addHelpText("after", `
+
+Setup steps run once during \`marshal setup\`, before apps and repos. They
+are meant for interactive authentications. A --check-cmd that exits 0 marks
+the step already satisfied so it is skipped.
+
+Examples:
+  marshal add-setup gh-auth --cmd "gh auth login" --check-cmd "gh auth status" -y
+  marshal add-setup az-login --cmd "az login" --check-cmd "az account show" --profiles work-laptop -y
+`)
+  .action(async (name, opts) => {
+    process.exit(await addSetupsCommand(ctx, [name], opts));
+  });
+
 program
   .command("remove <repo>")
   .description("Remove one tool repo from the manifest")
@@ -378,6 +435,21 @@ Examples:
   .action(async (name, opts) => {
     process.exit(await removeItemsCommand(ctx, {
       hooks: [name],
+    }, { yes: opts.yes, deleteFiles: false }));
+  });
+
+program
+  .command("remove-setup <name>")
+  .description("Remove one one-time setup step from the manifest")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .addHelpText("after", `
+
+Examples:
+  marshal remove-setup gh-auth -y
+`)
+  .action(async (name, opts) => {
+    process.exit(await removeItemsCommand(ctx, {
+      setup: [name],
     }, { yes: opts.yes, deleteFiles: false }));
   });
 

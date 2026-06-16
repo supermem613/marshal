@@ -2,7 +2,7 @@
 
 > Bind to a dotfiles repo and provision your CLI tool fleet — clone, build, install, and update everything from one manifest.
 
-Marshal is a generic, reusable fleet-management CLI. You point it at any dotfiles repo containing a `marshal.json`, and it handles the rest: install OS prerequisites (winget), install npm global packages, clone your tool repos, build them, link them, and keep them up to date.
+Marshal is a generic, reusable fleet-management CLI. You point it at any dotfiles repo containing a `marshal.json`, and it handles the rest: run one-time machine setup (authentications), install OS prerequisites (winget), install npm global packages, clone your tool repos, build them, link them, and keep them up to date.
 
 ```
 config manager → syncs agent config files between your machine and dotfiles
@@ -41,6 +41,8 @@ marshal add-app Microsoft.DotNet.SDK.9 --platforms win32 -y
 marshal add-npm typescript -y
 marshal add-npm typescript-language-server -y
 
+marshal add-setup gh-auth --cmd "gh auth login" --check-cmd "gh auth status" -y
+
 marshal add-hook config-sync --cmd "configsync sync" --interactive -y
 marshal add-hook prompt-sync --cmd "prompt sync" --interactive -y
 
@@ -49,6 +51,8 @@ marshal profile set work-laptop   # optional; required when marshal.json has pro
 marshal profile scope hook work-laptop config-sync prompt-sync -y
 marshal sync
 ```
+
+On a brand-new machine, run `marshal setup` once after binding. It picks the machine profile, runs one-time authentications (e.g. `gh auth login`, `az login`), then provisions everything with a full sync. Plain `marshal sync` never runs setup steps.
 
 That flow keeps onboarding simple:
 

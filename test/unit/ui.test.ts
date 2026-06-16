@@ -32,3 +32,20 @@ test("CannedPrompter: throws when exhausted", async () => {
   const p = new CannedPrompter([]);
   await assert.rejects(() => p.confirm("oops"), /exhausted/);
 });
+
+test("CannedPrompter: select returns canned choices in order", async () => {
+  const p = new CannedPrompter([], ["work", "personal"]);
+  assert.equal(await p.select("pick", ["work", "personal"]), "work");
+  assert.equal(await p.select("pick", ["work", "personal"]), "personal");
+  assert.deepEqual(p.selectQuestions, ["pick", "pick"]);
+});
+
+test("CannedPrompter: select throws when exhausted", async () => {
+  const p = new CannedPrompter([], []);
+  await assert.rejects(() => p.select("pick", ["a"]), /exhausted/);
+});
+
+test("CannedPrompter: select rejects a choice not in the offered list", async () => {
+  const p = new CannedPrompter([], ["ghost"]);
+  await assert.rejects(() => p.select("pick", ["a", "b"]), /not in choices/);
+});

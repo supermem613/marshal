@@ -13,6 +13,9 @@ export interface SyncOptions {
   repos?: string[];
   // Run manifest hooks even when syncing a subset of repos.
   hooks?: boolean;
+  // Include one-time setup steps. Only `marshal setup` sets this; a plain sync
+  // never runs setup.
+  includeSetup?: boolean;
   profile?: string;
 }
 
@@ -71,12 +74,13 @@ export async function syncCommand(ctx: MarshalContext, opts: SyncOptions): Promi
     platform: ctx.platform,
     repoFilter: requested,
     includeHooks: requested.length === 0 || opts.hooks === true,
+    includeSetup: opts.includeSetup === true,
     activeProfile,
   });
 
   renderPlan(plan, ctx.log);
 
-  if (plan.apps.length + plan.npm.length + plan.repos.length === 0) {
+  if (plan.setup.length + plan.apps.length + plan.npm.length + plan.repos.length === 0) {
     return 0;
   }
 

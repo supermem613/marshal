@@ -10,17 +10,20 @@ Full reference for every `marshal` subcommand. Run `marshal --help` for the same
 | `add-app` | `marshal add-app <id>` | Append one prerequisite app to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--platforms`, `--profiles`, `--sync`, `-y`. Manifest-field option help is read from the schema metadata. |
 | `add-npm` | `marshal add-npm <name>` | Append one npm global package to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--platforms`, `--profiles`, `--sync`, `-y`. Manifest-field option help is read from the schema metadata. |
 | `add-hook` | `marshal add-hook <name> --cmd "<cmd>"` | Append one sync hook to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--cwd`, `--interactive`, `--platforms`, `--profiles`, `--sync`, `-y`. Manifest-field option help is read from the schema metadata. |
+| `add-setup` | `marshal add-setup <name> --cmd "<cmd>"` | Append one one-time setup step to the manifest. Manifest-only by default. Flags: `--check-cmd`, `--no-interactive`, `--platforms`, `--profiles`, `-y`. Manifest-field option help is read from the schema metadata. |
 | `bind` | `marshal bind <url\|path>` | Bind to a dotfiles repo. URLs auto-clone + provision; paths just record the binding. Flags: `--path <p>`, `--show`, `--unset`, `--no-sync`, `-y`. |
 | `cd` | `marshal cd` | Spawn a subshell rooted at the bound dotfiles repo (like `chezmoi cd`). |
 | `doctor` | `marshal doctor` | Health check: Node version, git, winget (Win32), npm, binding, manifest. `--json` supported. |
 | `home` | `marshal home` | Spawn a subshell rooted at the marshal source repo. |
 | `init` | `marshal init` | Create a minimal `marshal.json` in the current directory and record the binding. `--no-bind` to skip binding. |
-| `list` | `marshal list` | Print the full manifest contents (apps, npm, repos, hooks, with platform filters). `--json` supported. |
+| `list` | `marshal list` | Print the full manifest contents (setup, apps, npm, repos, hooks, with platform filters). `--json` supported. |
 | `profile` | `marshal profile [list|get|set|clear|add|remove|scope|unscope] ...` | Manage declared manifest profiles, item profile scopes, and the machine-local active profile stored in `~/.marshal.json`. Manifest-editing actions support `-y`. |
 | `remove` | `marshal remove <repo>` | Remove one tool repo from the manifest and delete the cloned directory. `--keep-files` to preserve the clone. `-y` to skip confirmation. |
 | `remove-app` | `marshal remove-app <id>` | Remove one prerequisite app from the manifest. `-y` to skip confirmation. |
 | `remove-npm` | `marshal remove-npm <name>` | Remove one npm global package from the manifest. `-y` to skip confirmation. |
 | `remove-hook` | `marshal remove-hook <name>` | Remove one sync hook from the manifest. `-y` to skip confirmation. |
+| `remove-setup` | `marshal remove-setup <name>` | Remove one one-time setup step from the manifest. `-y` to skip confirmation. |
+| `setup` | `marshal setup` | One-time machine bootstrap: pick the machine profile, then run the manifest's one-time setup steps (authentications) before a full sync. Flags: `--profile <name>`, `--status`, `--force`, `--no-sync`, `-y`. |
 | `status` | `marshal status` | Show what's recorded, what applies to this platform, and what's installed. `--json` for machine output. |
 | `sync` | `marshal sync [repos...]` | Apply the manifest: install apps, install npm globals, clone/build/refresh repos, then run configured hooks. Optionally limit to named tools. Flags: `-y`, `--hooks`, `--profile <name>` one-shot override. |
 | `update` | `marshal update` | Self-update marshal: `git pull --ff-only`, then `npm install && npm run build` only when the pull brings in new changes. |
@@ -41,6 +44,19 @@ cd ~/repos/dotfiles
 marshal init --no-bind
 marshal bind .
 ```
+
+### New machine bootstrap
+
+On a brand-new machine, after cloning and binding, run the one-time setup before anything else. It picks the machine profile, runs authentications (e.g. `gh auth login`, `az login`), then provisions everything with a full sync.
+
+```pwsh
+marshal setup                  # prompts for the machine profile, runs auth steps, then syncs
+marshal setup --profile work-laptop -y   # non-interactive profile choice
+marshal setup --status         # show resolved profile + per-step satisfaction, run nothing
+marshal setup --no-sync        # just record the chosen profile; run nothing else
+```
+
+`marshal setup` is manual-only: plain `marshal sync` never runs setup steps. `check_cmd` is the idempotency oracle, so re-running setup safely skips already-authenticated steps. If your manifest has profile-scoped items and you run `marshal sync` before choosing a profile, sync fails fast and points you at `marshal setup`.
 
 ### Daily refresh on an existing machine
 
@@ -92,6 +108,7 @@ marshal add-app dandavison.delta -y
 marshal add-app Microsoft.DotNet.SDK.9 --platforms win32 -y
 marshal add-npm typescript -y
 marshal add-npm typescript-language-server -y
+marshal add-setup gh-auth --cmd "gh auth login" --check-cmd "gh auth status" -y
 marshal add-hook config-sync --cmd "configsync sync" --interactive -y
 marshal add-hook prompt-sync --cmd "prompt sync" --interactive -y
 marshal sync
@@ -116,13 +133,14 @@ Change existing item scopes without hand-editing JSON:
 ```pwsh
 marshal profile scope app work-laptop Git.Git OpenJS.NodeJS.LTS -y
 marshal profile scope npm work-laptop typescript typescript-language-server -y
+marshal profile scope setup work-laptop gh-auth az-login -y
 marshal profile scope repo work-laptop forge marshal -y
 marshal profile scope hook work-laptop config-sync prompt-sync -y
 marshal profile unscope app work-laptop Git.Git OpenJS.NodeJS.LTS -y
 marshal profile remove work-laptop -y
 ```
 
-`scope` and `unscope` accept `app`, `npm`, `repo`, or `hook` as the item kind, then a profile name, then one or more item names. Removing the last profile from an item makes that item shared across all profiles. `profile remove <name>` refuses while any item still references that profile, so removing a declared profile cannot accidentally make profile-only items global.
+`scope` and `unscope` accept `app`, `npm`, `setup`, `repo`, or `hook` as the item kind, then a profile name, then one or more item names. Removing the last profile from an item makes that item shared across all profiles. `profile remove <name>` refuses while any item still references that profile, so removing a declared profile cannot accidentally make profile-only items global.
 
 Use `marshal sync --profile <name>` for a one-shot override without changing `~/.marshal.json`.
 
@@ -135,6 +153,7 @@ marshal remove tool-beta --keep-files
 marshal remove-app Git.Git
 marshal remove-app OpenJS.NodeJS.LTS
 marshal remove-npm typescript
+marshal remove-setup gh-auth
 marshal remove-hook config-sync
 marshal remove-hook prompt-sync
 ```

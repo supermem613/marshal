@@ -2,13 +2,13 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BindingError, readBinding, requireBinding, writeBindingProfile } from "../binding.js";
 import { MarshalContext } from "../context.js";
-import { App, Hook, MANIFEST_FILENAME, Manifest, ManifestError, Npm, readManifest, Repo, validateManifest } from "../manifest.js";
+import { App, Hook, Setup, MANIFEST_FILENAME, Manifest, ManifestError, Npm, readManifest, Repo, validateManifest } from "../manifest.js";
 import { ProfileError, validateProfileName } from "../profile.js";
 import { pullDotfilesRepo } from "../dotfiles-git.js";
 import { commitAndPush } from "./add.js";
 
 export type ProfileAction = "list" | "get" | "set" | "clear" | "add" | "remove" | "scope" | "unscope";
-export type ProfileScopeKind = "app" | "apps" | "npm" | "repo" | "repos" | "hook" | "hooks";
+export type ProfileScopeKind = "app" | "apps" | "npm" | "repo" | "repos" | "hook" | "hooks" | "setup";
 
 export interface ProfileOptions {
   yes?: boolean;
@@ -60,7 +60,7 @@ export async function profileCommand(
   }
   if (resolvedAction === "scope" || resolvedAction === "unscope") {
     if (!name || !itemName || !profileName) {
-      ctx.log.error(`profile ${resolvedAction}: expected <app|npm|repo|hook> <name> <profile>`);
+      ctx.log.error(`profile ${resolvedAction}: expected <app|npm|repo|hook|setup> <name> <profile>`);
       return 2;
     }
     return profileScope(ctx, resolvedAction, name, Array.isArray(itemName) ? itemName : [itemName], profileName, opts);
@@ -176,7 +176,7 @@ async function profileRemove(ctx: MarshalContext, profile: string, opts: Profile
   const references = findProfileReferences(manifest, profile);
   if (references.length > 0) {
     ctx.log.error(`Cannot remove profile "${profile}" while it is still used by: ${references.join(", ")}`);
-    ctx.log.info(`Run \`marshal profile unscope <app|npm|repo|hook> <name> ${profile}\` for each item first.`);
+    ctx.log.info(`Run \`marshal profile unscope <app|npm|repo|hook|setup> <name> ${profile}\` for each item first.`);
     return 1;
   }
   const next = validateProfileManifest(ctx, {
@@ -229,7 +229,7 @@ async function profileScope(
   }
   const scopeKind = parseScopeKind(kind);
   if (!scopeKind) {
-    ctx.log.error(`Unknown profile scope kind "${kind}". Expected app, npm, repo, or hook.`);
+    ctx.log.error(`Unknown profile scope kind "${kind}". Expected app, npm, repo, hook, or setup.`);
     return 2;
   }
   const edited = editItemProfiles(manifest, scopeKind, itemNames, profile, action);
@@ -301,7 +301,7 @@ async function writeManifestChange(
   return { code: 0, applied: true };
 }
 
-function parseScopeKind(kind: string): "app" | "npm" | "repo" | "hook" | null {
+function parseScopeKind(kind: string): "app" | "npm" | "repo" | "hook" | "setup" | null {
   if (kind === "app" || kind === "apps") {
     return "app";
   }
@@ -314,12 +314,15 @@ function parseScopeKind(kind: string): "app" | "npm" | "repo" | "hook" | null {
   if (kind === "hook" || kind === "hooks") {
     return "hook";
   }
+  if (kind === "setup") {
+    return "setup";
+  }
   return null;
 }
 
 function editItemProfiles(
   manifest: Manifest,
-  kind: "app" | "npm" | "repo" | "hook",
+  kind: "app" | "npm" | "repo" | "hook" | "setup",
   itemNames: string[],
   profile: string,
   action: "scope" | "unscope",
@@ -349,6 +352,13 @@ function editItemProfiles(
     }
     return { manifest: validateManifest({ ...manifest, repos: result.items }) };
   }
+  if (kind === "setup") {
+    const result = editMany(manifest.setup, uniqueItemNames, (s, name) => s.name === name, profile, action);
+    if ("code" in result) {
+      return result;
+    }
+    return { manifest: validateManifest({ ...manifest, setup: result.items }) };
+  }
   const result = editMany(manifest.hooks, uniqueItemNames, (h, name) => h.name === name, profile, action);
   if ("code" in result) {
     return result;
@@ -356,7 +366,7 @@ function editItemProfiles(
   return { manifest: validateManifest({ ...manifest, hooks: result.items }) };
 }
 
-function editMany<T extends App | Npm | Repo | Hook>(
+function editMany<T extends App | Npm | Repo | Hook | Setup>(
   items: T[],
   names: string[],
   matches: (item: T, name: string) => boolean,
@@ -384,7 +394,7 @@ function editMany<T extends App | Npm | Repo | Hook>(
   return { items: next };
 }
 
-function editOne<T extends App | Npm | Repo | Hook>(
+function editOne<T extends App | Npm | Repo | Hook | Setup>(
   items: T[],
   matches: (item: T) => boolean,
   profile: string,
@@ -417,7 +427,7 @@ function editOne<T extends App | Npm | Repo | Hook>(
   };
 }
 
-function withProfiles<T extends App | Npm | Repo | Hook>(item: T, profiles: string[]): T {
+function withProfiles<T extends App | Npm | Repo | Hook | Setup>(item: T, profiles: string[]): T {
   if (profiles.length === 0) {
     const rest = { ...item };
     delete rest.profiles;
@@ -436,6 +446,7 @@ function findProfileReferences(manifest: Manifest, profile: string): string[] {
     ...manifest.npm.filter((n) => n.profiles?.includes(profile)).map((n) => `npm:${n.name}`),
     ...manifest.repos.filter((r) => r.profiles?.includes(profile)).map((r) => `repo:${r.name}`),
     ...manifest.hooks.filter((h) => h.profiles?.includes(profile)).map((h) => `hook:${h.name}`),
+    ...manifest.setup.filter((s) => s.profiles?.includes(profile)).map((s) => `setup:${s.name}`),
   ];
 }
 

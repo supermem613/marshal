@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { Manifest, Repo, App, Npm, Hook } from "./manifest.js";
+import { Manifest, Repo, App, Npm, Hook, Setup } from "./manifest.js";
 import { Platform, appliesToPlatform } from "./platform.js";
 import { resolvePath, expandHome, DEFAULT_REPOS_PATH } from "./paths.js";
 import { ActiveProfile, profileApplies } from "./profile.js";
@@ -44,11 +44,20 @@ export interface HookStep {
   interactive: boolean;
 }
 
+export interface SetupStep {
+  name: string;
+  command: string;
+  checkCmd: string | null;
+  cwd: string;
+  interactive: boolean;
+}
+
 export interface Plan {
   apps: AppStep[];
   npm: NpmStep[];
   repos: RepoStep[];
   hooks: HookStep[];
+  setup: SetupStep[];
   reposPath: string;     // absolute path of the resolved reposPath (for display)
   platform: Platform;
   activeProfile: ActiveProfile;
@@ -62,6 +71,9 @@ export interface BuildPlanOptions {
   // (apps unchanged.) Used by `marshal sync <name1> <name2>`.
   repoFilter?: string[];
   includeHooks?: boolean;
+  // Setup steps are one-time machine bootstrap and never run during a plain
+  // sync. Only `marshal setup` opts in via includeSetup.
+  includeSetup?: boolean;
   activeProfile?: ActiveProfile;
 }
 
@@ -130,7 +142,20 @@ export function buildPlan(manifest: Manifest, opts: BuildPlanOptions): Plan {
         interactive: h.interactive,
       }));
 
-  return { apps, npm, repos, hooks, reposPath, platform: opts.platform, activeProfile };
+  const setup: SetupStep[] = opts.includeSetup !== true
+    ? []
+    : manifest.setup
+      .filter((s: Setup) => appliesToPlatform(s.platforms as Platform[] | undefined, opts.platform))
+      .filter((s) => profileApplies(s.profiles, activeProfile.profile))
+      .map((s) => ({
+        name: s.name,
+        command: s.cmd,
+        checkCmd: s.check_cmd ?? null,
+        cwd: opts.dotfilesRepo,
+        interactive: s.interactive,
+      }));
+
+  return { apps, npm, repos, hooks, setup, reposPath, platform: opts.platform, activeProfile };
 }
 
 // Verify a filter resolved to all real repo names — surface typos before

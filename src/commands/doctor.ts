@@ -100,7 +100,7 @@ function checkManifest(ctx: MarshalContext): CheckResult {
     return {
       name: "manifest",
       ok: true,
-      detail: `${m.apps.length} app(s), ${m.npm.length} npm, ${m.repos.length} repo(s)`,
+      detail: `${m.setup.length} setup, ${m.apps.length} app(s), ${m.npm.length} npm, ${m.repos.length} repo(s)`,
     };
   } catch (err) {
     if (err instanceof ManifestError) {

@@ -15,6 +15,7 @@ test("applyPlan: apps are skipped on darwin and recorded as non-ok", async () =>
       repos: [],
       hooks: [],
       npm: [],
+      setup: [],
       reposPath: join(t.homeDir, "repos"),
       platform: "darwin",
       activeProfile: { profile: null, source: "none" },
@@ -41,6 +42,7 @@ test("applyPlan: skipped non-win apps are recorded as non-ok results", async () 
       repos: [],
       hooks: [],
       npm: [],
+      setup: [],
       reposPath: join(t.homeDir, "repos"),
       platform: "darwin",
       activeProfile: { profile: null, source: "none" },
@@ -63,6 +65,7 @@ test("applyPlan: apps are skipped on linux and recorded as non-ok", async () => 
       repos: [],
       hooks: [],
       npm: [],
+      setup: [],
       reposPath: join(t.homeDir, "repos"),
       platform: "linux",
       activeProfile: { profile: null, source: "none" },
@@ -88,6 +91,7 @@ test("applyPlan: apps are installed on win32", async () => {
       repos: [],
       hooks: [],
       npm: [],
+      setup: [],
       reposPath: join(t.homeDir, "repos"),
       platform: "win32",
       activeProfile: { profile: null, source: "none" },
@@ -111,6 +115,7 @@ test("applyPlan: app already installed on win32 via preflight", async () => {
       repos: [],
       hooks: [],
       npm: [],
+      setup: [],
       reposPath: join(t.homeDir, "repos"),
       platform: "win32",
       activeProfile: { profile: null, source: "none" },
@@ -134,6 +139,7 @@ test("applyPlan: app install fails on win32", async () => {
       repos: [],
       hooks: [],
       npm: [],
+      setup: [],
       reposPath: join(t.homeDir, "repos"),
       platform: "win32",
       activeProfile: { profile: null, source: "none" },
@@ -159,6 +165,7 @@ test("applyPlan: npm package installed when missing (cross-platform)", async () 
       npm: [{ name: "typescript" }],
       repos: [],
       hooks: [],
+      setup: [],
       reposPath: join(t.homeDir, "repos"),
       platform: "darwin",
       activeProfile: { profile: null, source: "none" },
@@ -182,6 +189,7 @@ test("applyPlan: npm package already installed short-circuits before install", a
       npm: [{ name: "typescript" }],
       repos: [],
       hooks: [],
+      setup: [],
       reposPath: join(t.homeDir, "repos"),
       platform: "win32",
       activeProfile: { profile: null, source: "none" },
@@ -209,6 +217,7 @@ test("applyPlan: npm package present but npm ls exits non-zero still short-circu
       npm: [{ name: "typescript" }],
       repos: [],
       hooks: [],
+      setup: [],
       reposPath: join(t.homeDir, "repos"),
       platform: "win32",
       activeProfile: { profile: null, source: "none" },
@@ -234,6 +243,7 @@ test("applyPlan: npm install failure is recorded as non-ok", async () => {
       npm: [{ name: "does-not-exist" }],
       repos: [],
       hooks: [],
+      setup: [],
       reposPath: join(t.homeDir, "repos"),
       platform: "linux",
       activeProfile: { profile: null, source: "none" },
@@ -255,6 +265,7 @@ test("applyPlan: skipNpm option bypasses npm packages", async () => {
       npm: [{ name: "typescript" }],
       repos: [],
       hooks: [],
+      setup: [],
       reposPath: join(t.homeDir, "repos"),
       platform: "win32",
       activeProfile: { profile: null, source: "none" },
@@ -277,6 +288,7 @@ test("applyPlan: skipApps option bypasses all apps", async () => {
       repos: [],
       hooks: [],
       npm: [],
+      setup: [],
       reposPath: join(t.homeDir, "repos"),
       platform: "win32",
       activeProfile: { profile: null, source: "none" },
@@ -306,6 +318,7 @@ test("applyPlan: skipped apps do not prevent hooks from running", async () => {
         interactive: false,
       }],
       npm: [],
+      setup: [],
       reposPath: join(t.homeDir, "repos"),
       platform: "darwin",
       activeProfile: { profile: null, source: "none" },
@@ -329,6 +342,7 @@ test("applyPlan: multiple apps skipped still yields correct step names", async (
       repos: [],
       hooks: [],
       npm: [],
+      setup: [],
       reposPath: join(t.homeDir, "repos"),
       platform: "darwin",
       activeProfile: { profile: null, source: "none" },
@@ -337,6 +351,141 @@ test("applyPlan: multiple apps skipped still yields correct step names", async (
     assert.equal(results.length, 3);
     assert.deepEqual(results.map((r) => r.step), ["app: A.A", "app: B.B", "app: C.C"]);
     assert.ok(results.every((r) => r.skipped === true));
+  } finally {
+    t.cleanup();
+  }
+});
+
+// --- setup steps ---
+
+function setupPlan(t: ReturnType<typeof makeContext>, setup: Plan["setup"]): Plan {
+  return {
+    apps: [],
+    repos: [],
+    hooks: [],
+    npm: [],
+    setup,
+    reposPath: join(t.homeDir, "repos"),
+    platform: t.ctx.platform,
+    activeProfile: { profile: null, source: "none" },
+  };
+}
+
+test("applyPlan: setup step with satisfied check_cmd is skipped before running", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond("gh auth status", { code: 0 });
+  try {
+    const plan = setupPlan(t, [
+      { name: "gh-auth", command: "gh auth login", checkCmd: "gh auth status", cwd: t.homeDir, interactive: true },
+    ]);
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].step, "setup: gh-auth");
+    assert.equal(results[0].ok, true);
+    assert.equal(results[0].skipped, true);
+    assert.equal(results[0].detail, "already satisfied");
+    // Only the check ran; the login command must not have executed.
+    assert.equal(t.runner.calls.length, 1);
+    assert.ok(t.runner.calls[0].command.startsWith("gh auth status"));
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: setup step runs its command when check_cmd is unsatisfied", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond("gh auth status", { code: 1 });
+  t.runner.respond("gh auth login", { code: 0 });
+  try {
+    const plan = setupPlan(t, [
+      { name: "gh-auth", command: "gh auth login", checkCmd: "gh auth status", cwd: t.homeDir, interactive: true },
+    ]);
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].ok, true);
+    assert.equal(results[0].skipped, undefined);
+    assert.equal(t.runner.calls.length, 2);
+    assert.ok(t.runner.calls[1].command.startsWith("gh auth login"));
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: setup step without check_cmd always runs", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond("do-setup", { code: 0 });
+  try {
+    const plan = setupPlan(t, [
+      { name: "always", command: "do-setup", checkCmd: null, cwd: t.homeDir, interactive: false },
+    ]);
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].ok, true);
+    assert.equal(t.runner.calls.length, 1);
+    assert.ok(t.runner.calls[0].command.startsWith("do-setup"));
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: failed setup step is recorded and does not abort later stages", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond("bad-auth", { fail: true, code: 1, stderr: "auth boom" });
+  t.runner.respond(/^npm ls/, { code: 0, stdout: "C:\\npm\n`-- typescript@5.7.0" });
+  try {
+    const plan: Plan = {
+      apps: [],
+      repos: [],
+      hooks: [],
+      npm: [{ name: "typescript" }],
+      setup: [{ name: "auth", command: "bad-auth", checkCmd: null, cwd: t.homeDir, interactive: false }],
+      reposPath: join(t.homeDir, "repos"),
+      platform: "win32",
+      activeProfile: { profile: null, source: "none" },
+    };
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results.length, 2);
+    assert.equal(results[0].step, "setup: auth");
+    assert.equal(results[0].ok, false);
+    // npm still ran after the setup failure.
+    assert.equal(results[1].step, "npm: typescript");
+    assert.equal(results[1].ok, true);
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: setup steps run before apps", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond("do-setup", { code: 0 });
+  t.runner.respond(/^winget/, { code: 0, stdout: "No installed package found matching input criteria." });
+  try {
+    const plan: Plan = {
+      apps: [{ id: "Git.Git" }],
+      repos: [],
+      hooks: [],
+      npm: [],
+      setup: [{ name: "first", command: "do-setup", checkCmd: null, cwd: t.homeDir, interactive: false }],
+      reposPath: join(t.homeDir, "repos"),
+      platform: "win32",
+      activeProfile: { profile: null, source: "none" },
+    };
+    await applyPlan(t.ctx, plan);
+    assert.ok(t.runner.calls[0].command.startsWith("do-setup"));
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: skipSetup bypasses setup steps", async () => {
+  const t = makeContext({ platform: "win32" });
+  try {
+    const plan = setupPlan(t, [
+      { name: "first", command: "do-setup", checkCmd: null, cwd: t.homeDir, interactive: false },
+    ]);
+    const results = await applyPlan(t.ctx, plan, { skipSetup: true });
+    assert.equal(results.length, 0);
+    assert.equal(t.runner.calls.length, 0);
   } finally {
     t.cleanup();
   }

@@ -14,6 +14,7 @@ function makeManifest(over: Partial<Manifest> = {}): Manifest {
     npm: [],
     repos: [],
     hooks: [],
+    setup: [],
     ...over,
   };
 }
@@ -26,6 +27,38 @@ test("resolveReposPath: defaults to ~/repos", () => {
 test("resolveReposPath: respects manifest override", () => {
   const r = resolveReposPath(makeManifest({ reposPath: "~/code" }), "/home/u").replace(/\\/g, "/");
   assert.equal(r, "/home/u/code");
+});
+
+test("buildPlan: setup steps excluded by default, included with includeSetup", () => {
+  const home = mkdtempSync(join(tmpdir(), "marshal-plan-"));
+  try {
+    const m = makeManifest({
+      profiles: ["work"],
+      setup: [
+        { name: "gh-auth", cmd: "gh auth login", check_cmd: "gh auth status", interactive: true },
+        { name: "win-only", cmd: "x", interactive: true, platforms: ["darwin"] },
+        { name: "work-only", cmd: "y", interactive: true, profiles: ["work"] },
+      ],
+    });
+    const defaultPlan = buildPlan(m, { homeDir: home, dotfilesRepo: home, platform: "win32" });
+    assert.deepEqual(defaultPlan.setup, []);
+
+    const noProfile = buildPlan(m, { homeDir: home, dotfilesRepo: home, platform: "win32", includeSetup: true });
+    assert.deepEqual(noProfile.setup.map((s) => s.name), ["gh-auth"]);
+
+    const withProfile = buildPlan(m, {
+      homeDir: home,
+      dotfilesRepo: home,
+      platform: "win32",
+      includeSetup: true,
+      activeProfile: { profile: "work", source: "binding" },
+    });
+    assert.deepEqual(withProfile.setup.map((s) => s.name), ["gh-auth", "work-only"]);
+    assert.equal(withProfile.setup[0].checkCmd, "gh auth status");
+    assert.equal(withProfile.setup[0].cwd, home);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("buildPlan: empty manifest yields empty plan", () => {

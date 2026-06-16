@@ -14,12 +14,20 @@ const ACTION_LABEL: Record<RepoStep["action"], string> = {
 };
 
 export function renderPlan(plan: Plan, log: Logger): void {
-  const total = plan.apps.length + plan.npm.length + plan.repos.length + plan.hooks.length;
+  const total = plan.setup.length + plan.apps.length + plan.npm.length + plan.repos.length + plan.hooks.length;
   if (total === 0) {
     log.info(`Plan (${plan.platform}, profile: ${formatActiveProfile(plan.activeProfile)}): nothing to do.`);
     return;
   }
-  log.info(`Plan (${plan.platform}, profile: ${formatActiveProfile(plan.activeProfile)}): ${plan.apps.length} app(s), ${plan.npm.length} npm, ${plan.repos.length} repo(s), ${plan.hooks.length} hook(s)`);
+  log.info(`Plan (${plan.platform}, profile: ${formatActiveProfile(plan.activeProfile)}): ${plan.setup.length} setup, ${plan.apps.length} app(s), ${plan.npm.length} npm, ${plan.repos.length} repo(s), ${plan.hooks.length} hook(s)`);
+  if (plan.setup.length > 0) {
+    log.info("");
+    log.info("  Setup steps (one-time, before apps):");
+    for (const s of plan.setup) {
+      const mode = s.interactive ? "[interactive] " : "";
+      log.info(`    • ${s.name.padEnd(20)} ${mode}${s.command}`);
+    }
+  }
   if (plan.apps.length > 0) {
     log.info("");
     log.info("  Apps (winget install):");

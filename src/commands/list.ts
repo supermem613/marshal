@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import { MarshalContext } from "../context.js";
 import { requireBinding, BindingError } from "../binding.js";
-import { App, Hook, Npm, readManifest, Manifest, ManifestError, Repo } from "../manifest.js";
+import { App, Hook, Npm, Setup, readManifest, Manifest, ManifestError, Repo } from "../manifest.js";
 import { buildPlan } from "../plan.js";
 import { formatActiveProfile, profileApplies, ProfileError, resolveActiveProfile } from "../profile.js";
 
@@ -53,6 +53,7 @@ export async function listCommand(ctx: MarshalContext, opts: ListOptions): Promi
     homeDir: ctx.homeDir,
     dotfilesRepo: binding.dotfilesRepo,
     platform: ctx.platform,
+    includeSetup: true,
     activeProfile,
   });
 
@@ -68,6 +69,7 @@ export async function listCommand(ctx: MarshalContext, opts: ListOptions): Promi
       npm: manifest.npm,
       repos: manifest.repos,
       hooks: manifest.hooks,
+      setup: manifest.setup,
     }, null, 2) + "\n");
     return 0;
   }
@@ -76,6 +78,7 @@ export async function listCommand(ctx: MarshalContext, opts: ListOptions): Promi
   const planNpmNames = new Set(plan.npm.map((n) => n.name));
   const planRepoNames = new Set(plan.repos.map((r) => r.name));
   const planHookNames = new Set(plan.hooks.map((h) => h.name));
+  const planSetupNames = new Set(plan.setup.map((s) => s.name));
 
   ctx.log.info("");
   ctx.log.info(chalk.bold.cyan("  ┌─ marshal manifest"));
@@ -84,15 +87,37 @@ export async function listCommand(ctx: MarshalContext, opts: ListOptions): Promi
   ctx.log.dim(`  │  profile:  ${formatActiveProfile(activeProfile)}`);
   ctx.log.dim(`  │  repos:    ${plan.reposPath}`);
   renderProfiles(ctx, manifest, activeProfile.profile);
+  renderSetup(ctx, manifest.setup, planSetupNames);
   renderApps(ctx, manifest.apps, planAppIds);
   renderNpm(ctx, manifest.npm, planNpmNames);
   renderRepos(ctx, manifest.repos, planRepoNames);
   renderHooks(ctx, manifest.hooks, planHookNames);
   ctx.log.dim("  │");
-  ctx.log.info(chalk.cyan(`  └─ ${manifest.apps.length} apps, ${manifest.npm.length} npm, ${manifest.repos.length} repos, ${manifest.hooks.length} hooks`));
+  ctx.log.info(chalk.cyan(`  └─ ${manifest.setup.length} setup, ${manifest.apps.length} apps, ${manifest.npm.length} npm, ${manifest.repos.length} repos, ${manifest.hooks.length} hooks`));
   ctx.log.info("");
   ctx.log.dim(`  Legend: ${chalk.green("◉")} applies  ${chalk.dim("○")} skipped  scope: shared means every profile`);
   return 0;
+}
+
+function renderSetup(ctx: MarshalContext, setup: Setup[], planSetupNames: Set<string>): void {
+  ctx.log.dim("  │");
+  ctx.log.info(chalk.bold(`  │  setup (${setup.length})`));
+  if (setup.length === 0) {
+    ctx.log.dim("  │    (none)");
+    return;
+  }
+  for (const step of setup) {
+    const applies = planSetupNames.has(step.name);
+    const metadata = [
+      scopeLabel(step.profiles),
+      platformLabel(step.platforms),
+      step.interactive ? "interactive" : "non-interactive",
+      step.check_cmd ? `check: ${step.check_cmd}` : "no check",
+    ].filter(Boolean).join("  ");
+    ctx.log.info(`  │    ${indicator(applies)} ${step.name.padEnd(24)}`);
+    ctx.log.dim(`  │      ${metadata}`);
+    ctx.log.dim(`  │      command: ${step.cmd}`);
+  }
 }
 
 function renderProfiles(ctx: MarshalContext, manifest: Manifest, activeProfile: string | null): void {
@@ -195,9 +220,10 @@ function platformLabel(platforms: string[] | undefined): string {
 }
 
 function profileCounts(manifest: Manifest, profile: string): string {
+  const setup = manifest.setup.filter((step) => profileApplies(step.profiles, profile)).length;
   const apps = manifest.apps.filter((app) => profileApplies(app.profiles, profile)).length;
   const npm = manifest.npm.filter((pkg) => profileApplies(pkg.profiles, profile)).length;
   const repos = manifest.repos.filter((repo) => profileApplies(repo.profiles, profile)).length;
   const hooks = manifest.hooks.filter((hook) => profileApplies(hook.profiles, profile)).length;
-  return `${apps} apps, ${npm} npm, ${repos} repos, ${hooks} hooks`;
+  return `${setup} setup, ${apps} apps, ${npm} npm, ${repos} repos, ${hooks} hooks`;
 }

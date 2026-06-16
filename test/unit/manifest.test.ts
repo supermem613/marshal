@@ -61,6 +61,54 @@ test("ManifestSchema: defaults npm to empty for legacy manifests", () => {
   }
 });
 
+test("ManifestSchema: accepts setup steps and defaults interactive to true", () => {
+  const r = ManifestSchema.safeParse({
+    version: 1,
+    profiles: ["work"],
+    setup: [
+      { name: "gh-auth", cmd: "gh auth login", check_cmd: "gh auth status" },
+      { name: "az-login", cmd: "az login", profiles: ["work"], interactive: false },
+    ],
+  });
+  assert.ok(r.success, JSON.stringify(r));
+  if (r.success) {
+    assert.equal(r.data.setup[0].interactive, true);
+    assert.equal(r.data.setup[0].check_cmd, "gh auth status");
+    assert.equal(r.data.setup[1].interactive, false);
+  }
+});
+
+test("ManifestSchema: rejects duplicate setup step names", () => {
+  const r = ManifestSchema.safeParse({
+    version: 1,
+    setup: [{ name: "gh-auth", cmd: "a" }, { name: "gh-auth", cmd: "b" }],
+  });
+  assert.equal(r.success, false);
+});
+
+test("ManifestSchema: rejects setup scoped to unknown profile", () => {
+  const r = ManifestSchema.safeParse({
+    version: 1,
+    setup: [{ name: "gh-auth", cmd: "gh auth login", profiles: ["ghost"] }],
+  });
+  assert.equal(r.success, false);
+});
+
+test("ManifestSchema: defaults setup to empty for legacy manifests", () => {
+  const r = ManifestSchema.safeParse({ version: 1 });
+  assert.ok(r.success);
+  if (r.success) {
+    assert.deepEqual(r.data.setup, []);
+  }
+});
+
+test("cliField: exposes setup interactive negative flag", () => {
+  assert.deepEqual(cliField("setup", "interactive"), {
+    cliFlag: "--no-interactive",
+    cliDescription: "Run the setup command without a real terminal attached",
+  });
+});
+
 test("cliField: exposes CLI help metadata from manifest schema code", () => {
   assert.deepEqual(cliField("repo", "install_cmd"), {
     cliFlag: "--install-cmd <cmd>",

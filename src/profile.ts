@@ -19,7 +19,8 @@ export function hasProfileScopedItems(manifest: Manifest): boolean {
   return manifest.apps.some((a) => hasProfiles(a.profiles))
     || manifest.npm.some((n) => hasProfiles(n.profiles))
     || manifest.repos.some((r) => hasProfiles(r.profiles))
-    || manifest.hooks.some((h) => hasProfiles(h.profiles));
+    || manifest.hooks.some((h) => hasProfiles(h.profiles))
+    || manifest.setup.some((s) => hasProfiles(s.profiles));
 }
 
 export function resolveActiveProfile(
@@ -45,8 +46,13 @@ export function requireProfileForScopedItems(manifest: Manifest, active: ActiveP
   const declared = manifest.profiles.length > 0
     ? manifest.profiles.join(", ")
     : "(none declared)";
+  // On a fresh machine the profile is usually chosen by `marshal setup`, so
+  // point there when this manifest defines one-time setup steps.
+  const fix = manifest.setup.length > 0
+    ? "Run `marshal setup` to pick a profile and run one-time setup, or `marshal profile set <name>`."
+    : "Run `marshal profile set <name>`.";
   throw new ProfileError(
-    `Profile-scoped items exist, but no active profile is set. Run \`marshal profile set <name>\`. Declared profiles: ${declared}`,
+    `Profile-scoped items exist, but no active profile is set. ${fix} Declared profiles: ${declared}`,
   );
 }
 

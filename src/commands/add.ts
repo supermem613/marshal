@@ -12,6 +12,7 @@ import {
   App,
   Npm,
   Hook,
+  Setup,
   Manifest,
 } from "../manifest.js";
 import { syncCommand } from "./sync.js";
@@ -363,6 +364,88 @@ export async function addHooksCommand(
   return await syncCommand(ctx, { yes: opts.yes ?? false });
 }
 
+export interface AddSetupOptions {
+  cmd: string;
+  checkCmd?: string;
+  check_cmd?: string;
+  platforms?: string[];
+  profiles?: string[];
+  interactive?: boolean;
+  yes?: boolean;
+}
+
+export async function addSetupCommand(
+  ctx: MarshalContext,
+  name: string,
+  opts: AddSetupOptions,
+): Promise<number> {
+  return addSetupsCommand(ctx, [name], opts);
+}
+
+export async function addSetupsCommand(
+  ctx: MarshalContext,
+  names: string[],
+  opts: AddSetupOptions,
+): Promise<number> {
+  const loaded = await loadBoundManifest(ctx);
+  if ("code" in loaded) {
+    return loaded.code;
+  }
+  const { bound, manifest } = loaded;
+  if (names.length === 0) {
+    ctx.log.error("No setup steps provided.");
+    return 2;
+  }
+  const duplicates = findDuplicates(names);
+  if (duplicates.length > 0) {
+    ctx.log.error(`Duplicate setup step name(s): ${duplicates.join(", ")}`);
+    return 1;
+  }
+  const existing = names.filter((name) => manifest.setup.some((s) => s.name === name));
+  if (existing.length > 0) {
+    ctx.log.error(`Setup step(s) already in manifest: ${existing.join(", ")}`);
+    return 1;
+  }
+  const platforms = parsePlatforms(opts.platforms);
+  if (platforms && "code" in platforms) {
+    ctx.log.error(platforms.message);
+    return platforms.code;
+  }
+  const checkCmd = opts.check_cmd ?? opts.checkCmd;
+  const newSetup: Setup[] = names.map((name) => ({
+    name,
+    cmd: opts.cmd,
+    interactive: opts.interactive ?? true,
+    ...(checkCmd ? { check_cmd: checkCmd } : {}),
+    ...(platforms && platforms.length > 0 ? { platforms } : {}),
+    ...(opts.profiles && opts.profiles.length > 0 ? { profiles: opts.profiles } : {}),
+  }));
+  const next: Manifest = {
+    ...manifest,
+    setup: [...manifest.setup, ...newSetup],
+  };
+  validateManifest(next);
+
+  ctx.log.info(`Will add ${newSetup.length} setup step(s) to ${MANIFEST_FILENAME}:`);
+  ctx.log.info(JSON.stringify(newSetup.length === 1 ? newSetup[0] : newSetup, null, 2));
+
+  if (!opts.yes) {
+    const ok = await ctx.prompt.confirm("Apply?");
+    if (!ok) {
+      ctx.log.info("Aborted.");
+      return 0;
+    }
+  }
+
+  const path = join(bound, MANIFEST_FILENAME);
+  writeFileSync(path, JSON.stringify(next, null, 2) + "\n", "utf8");
+  ctx.log.success(`Updated ${path}`);
+  await commitAndPush(ctx, bound, `marshal: add setup ${names.join(", ")}`);
+
+  ctx.log.info("Run `marshal setup` to apply.");
+  return 0;
+}
+
 export interface RemoveOptions {
   yes?: boolean;
   // Default true: physically delete the cloned repo dir after removing from
@@ -371,6 +454,7 @@ export interface RemoveOptions {
   apps?: string[];
   npm?: string[];
   hooks?: string[];
+  setup?: string[];
   repos?: string[];
 }
 
@@ -384,12 +468,13 @@ export async function removeCommand(
     apps: opts.apps ?? [],
     npm: opts.npm ?? [],
     hooks: opts.hooks ?? [],
+    setup: opts.setup ?? [],
   }, opts);
 }
 
 export async function removeItemsCommand(
   ctx: MarshalContext,
-  targets: { repos?: string[]; apps?: string[]; npm?: string[]; hooks?: string[] },
+  targets: { repos?: string[]; apps?: string[]; npm?: string[]; hooks?: string[]; setup?: string[] },
   opts: RemoveOptions,
 ): Promise<number> {
   const loaded = await loadBoundManifest(ctx);
@@ -402,8 +487,9 @@ export async function removeItemsCommand(
   const apps = unique(targets.apps ?? []);
   const npm = unique(targets.npm ?? []);
   const hooks = unique(targets.hooks ?? []);
-  if (repos.length + apps.length + npm.length + hooks.length === 0) {
-    ctx.log.error("No apps, npm packages, hooks, or repos provided.");
+  const setup = unique(targets.setup ?? []);
+  if (repos.length + apps.length + npm.length + hooks.length + setup.length === 0) {
+    ctx.log.error("No apps, npm packages, hooks, setup steps, or repos provided.");
     return 2;
   }
 
@@ -411,7 +497,8 @@ export async function removeItemsCommand(
   const missingApps = apps.filter((id) => !manifest.apps.some((a) => a.id === id));
   const missingNpm = npm.filter((name) => !manifest.npm.some((n) => n.name === name));
   const missingHooks = hooks.filter((name) => !manifest.hooks.some((h) => h.name === name));
-  if (missingRepos.length + missingApps.length + missingNpm.length + missingHooks.length > 0) {
+  const missingSetup = setup.filter((name) => !manifest.setup.some((s) => s.name === name));
+  if (missingRepos.length + missingApps.length + missingNpm.length + missingHooks.length + missingSetup.length > 0) {
     if (missingRepos.length > 0) {
       ctx.log.error(`Repo(s) not in manifest: ${missingRepos.join(", ")}`);
     }
@@ -424,6 +511,9 @@ export async function removeItemsCommand(
     if (missingHooks.length > 0) {
       ctx.log.error(`Hook(s) not in manifest: ${missingHooks.join(", ")}`);
     }
+    if (missingSetup.length > 0) {
+      ctx.log.error(`Setup step(s) not in manifest: ${missingSetup.join(", ")}`);
+    }
     return 1;
   }
 
@@ -432,6 +522,7 @@ export async function removeItemsCommand(
     apps.length > 0 ? `${apps.length} app(s)` : "",
     npm.length > 0 ? `${npm.length} npm package(s)` : "",
     hooks.length > 0 ? `${hooks.length} hook(s)` : "",
+    setup.length > 0 ? `${setup.length} setup step(s)` : "",
   ].filter(Boolean).join(", ");
   ctx.log.info(`Will remove ${summary} from ${MANIFEST_FILENAME}.`);
   if (repos.length > 0 && opts.deleteFiles !== false) {
@@ -449,12 +540,14 @@ export async function removeItemsCommand(
   const appSet = new Set(apps);
   const npmSet = new Set(npm);
   const hookSet = new Set(hooks);
+  const setupSet = new Set(setup);
   const next = {
     ...manifest,
     apps: manifest.apps.filter((a) => !appSet.has(a.id)),
     npm: manifest.npm.filter((n) => !npmSet.has(n.name)),
     repos: manifest.repos.filter((r) => !repoSet.has(r.name)),
     hooks: manifest.hooks.filter((h) => !hookSet.has(h.name)),
+    setup: manifest.setup.filter((s) => !setupSet.has(s.name)),
   };
   validateManifest(next);
   const path = join(bound, MANIFEST_FILENAME);

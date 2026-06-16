@@ -11,13 +11,23 @@ Marshal reads two JSON files:
 
 Single source of truth for what apps and tools a machine should have. Items are shared by default; add `profiles` when an app, repo, or hook should apply only to specific machine profiles.
 
-The manifest stores `apps`, `npm`, `repos`, and `hooks` as arrays because a machine fleet has many items. The mutation CLI intentionally edits one item per command (`marshal add <url>`, `marshal add-app <id>`, `marshal add-npm <name>`, `marshal add-hook <name>`, and the matching remove commands) so each change is explicit and has one confirmation. CLI help for manifest-backed add options is generated from the field metadata in the schema code.
+The manifest stores `setup`, `apps`, `npm`, `repos`, and `hooks` as arrays because a machine fleet has many items. The mutation CLI intentionally edits one item per command (`marshal add <url>`, `marshal add-app <id>`, `marshal add-npm <name>`, `marshal add-setup <name>`, `marshal add-hook <name>`, and the matching remove commands) so each change is explicit and has one confirmation. CLI help for manifest-backed add options is generated from the field metadata in the schema code.
 
 ```jsonc
 {
   "version": 1,
   "reposPath": "~/repos",            // optional; default ~/repos. Tool repos cloned to <reposPath>/<name>.
   "profiles": ["work-laptop", "personal-desktop"],  // optional declared profile names
+
+  "setup": [                          // one-time machine bootstrap steps (run by `marshal setup`)
+    {
+      "name": "gh-auth",
+      "cmd": "gh auth login",
+      "check_cmd": "gh auth status",  // exit 0 = already done = skip
+      "profiles": ["work-laptop"]
+    },
+    { "name": "az-login", "cmd": "az login", "check_cmd": "az account show" }
+  ],
 
   "apps": [                           // winget package IDs (Windows)
     { "id": "Git.Git" },
@@ -84,6 +94,18 @@ The manifest stores `apps`, `npm`, `repos`, and `hooks` as arrays because a mach
 | `npm` | | `[]` | npm global packages installed after apps, before repos. |
 | `repos` | | `[]` | Tool repos cloned, built, and updated. |
 | `hooks` | | `[]` | Extra sync steps. v1 supports post-repo hooks such as `configsync sync`. |
+| `setup` | | `[]` | One-time machine bootstrap steps (authentications). Run by `marshal setup`, not by plain `marshal sync`. |
+
+**Per-setup entry (`setup[]`):**
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `name` | ✅ | Kebab-case unique identifier for plan/status output. |
+| `cmd` | ✅ | Shell command to run once (e.g. `gh auth login`, `az login`). Runs interactively by default. |
+| `check_cmd` | | Idempotency oracle. If it exits `0` the step is already satisfied and is skipped. If absent, the step runs every time `marshal setup` is invoked. |
+| `interactive` | | `true` gives the child a real terminal. Defaults to `true` because setup steps are typically auth prompts. Set `false` for non-interactive commands. |
+| `platforms` | | Array of `win32` / `darwin` / `linux`. Absent = all platforms. |
+| `profiles` | | Array of declared profile names. Absent = shared across all profiles. |
 
 **Per-app entry (`apps[]`):**
 
@@ -171,6 +193,14 @@ For each repo applicable to the current platform, marshal picks one action:
 - Hooks run only after the repo stage succeeds. If any repo step fails, marshal records each hook as skipped and does not launch it.
 - Interactive hooks are previewed in the plan before confirmation.
 
+### Setup execution
+
+- Setup steps are the one-time machine bootstrap (authentications such as `gh auth login` and `az login`).
+- They run only via `marshal setup`, never during plain `marshal sync`. `marshal setup` first resolves the machine profile (interactively or via `--profile`), then runs setup steps before apps, npm, repos, and hooks.
+- `check_cmd` is the idempotency oracle: if it exits `0` the step is already satisfied and is skipped. A step with no `check_cmd` runs every time.
+- A failed setup step is recorded but does not abort the rest of the run.
+- `marshal setup --status` reports the resolved profile and per-step satisfaction without running any setup command.
+
 ### App execution
 
 - Apps are installed during `marshal sync` before any repo steps run.
@@ -223,13 +253,14 @@ marshal profile list
 marshal profile clear
 marshal profile scope app work-laptop Git.Git OpenJS.NodeJS.LTS
 marshal profile scope npm work-laptop typescript typescript-language-server
+marshal profile scope setup work-laptop gh-auth az-login
 marshal profile unscope hook work-laptop config-sync prompt-sync
 marshal profile remove work-laptop
 ```
 
 The binding refuses to point at a directory that doesn't contain a `marshal.json`, so you can't accidentally bind to a non-marshal repo.
 
-`profile` is optional for legacy manifests. Once the manifest contains profile-scoped items, set it with `marshal profile set <name>` before syncing. Re-binding preserves the existing local profile; sync re-validates it against the newly bound manifest. Use `profile add` and `profile remove` for the shared manifest's declared profiles. Use `profile scope <app|npm|repo|hook> <profile> <items...>` and `profile unscope <app|npm|repo|hook> <profile> <items...>` to update one or more existing item scopes.
+`profile` is optional for legacy manifests. Once the manifest contains profile-scoped items, set it with `marshal profile set <name>` before syncing. Re-binding preserves the existing local profile; sync re-validates it against the newly bound manifest. Use `profile add` and `profile remove` for the shared manifest's declared profiles. Use `profile scope <app|npm|setup|repo|hook> <profile> <items...>` and `profile unscope <app|npm|setup|repo|hook> <profile> <items...>` to update one or more existing item scopes.
 
 ### Multiple machines
 
