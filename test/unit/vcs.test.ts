@@ -10,8 +10,89 @@ test("resolveBackend: defaults to git backend", () => {
   assert.equal(DEFAULT_VCS, "git");
 });
 
-test("resolveBackend: sd throws until soda backend lands", () => {
-  assert.throws(() => resolveBackend("sd"), /sd/);
+test("resolveBackend: sd resolves to the soda backend", () => {
+  const b = resolveBackend("sd");
+  assert.equal(b.vcs, "sd");
+  assert.equal(b.bin, "sd");
+});
+
+test("SodaBackend.clone: runs sd clone with quoted dir in ctx.cwd", async () => {
+  const t = makeContext();
+  try {
+    await resolveBackend("sd").clone(t.ctx, "https://x/repo.git", "C:/tmp/repo");
+    assert.equal(t.runner.calls.length, 1);
+    assert.equal(t.runner.calls[0].command, `sd clone https://x/repo.git "C:/tmp/repo"`);
+    assert.equal(t.runner.calls[0].opts.cwd, t.ctx.cwd);
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("SodaBackend.pull: runs sd pull and reports changed on integration", async () => {
+  const t = makeContext();
+  try {
+    t.runner.respond("sd pull", {
+      code: 0,
+      stdout: JSON.stringify({ ok: true, command: "pull", data: [{ status: "pulled", behind: 2 }] }),
+    });
+    const r = await resolveBackend("sd").pull(t.ctx, "C:/tmp/repo");
+    assert.equal(r.changed, true);
+    assert.equal(t.runner.calls[0].command, "sd pull");
+    assert.equal(t.runner.calls[0].opts.cwd, "C:/tmp/repo");
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("SodaBackend.pull: reports no change when soda is up-to-date", async () => {
+  const t = makeContext();
+  try {
+    t.runner.respond("sd pull", {
+      code: 0,
+      stdout: JSON.stringify({ ok: true, command: "pull", data: [{ status: "up-to-date" }] }),
+    });
+    const r = await resolveBackend("sd").pull(t.ctx, "C:/tmp/repo");
+    assert.equal(r.changed, false);
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("SodaBackend.pull: honors inherit option", async () => {
+  const t = makeContext();
+  try {
+    t.runner.respond("sd pull", {
+      code: 0,
+      stdout: JSON.stringify({ ok: true, command: "pull", data: [{ status: "up-to-date" }] }),
+    });
+    await resolveBackend("sd").pull(t.ctx, "C:/tmp/repo", { inherit: true });
+    assert.equal(t.runner.calls[0].opts.inherit, true);
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("SodaBackend.commitFile: submits the default changelist without staging", async () => {
+  const t = makeContext();
+  try {
+    await resolveBackend("sd").commitFile(t.ctx, "C:/tmp/repo", "marshal.json", "marshal: add repos x");
+    assert.deepEqual(t.runner.calls.map((c) => c.command), [
+      `sd submit -d "marshal: add repos x"`,
+    ]);
+    assert.equal(t.runner.calls[0].opts.cwd, "C:/tmp/repo");
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("SodaBackend.push: runs sd push", async () => {
+  const t = makeContext();
+  try {
+    await resolveBackend("sd").push(t.ctx, "C:/tmp/repo");
+    assert.equal(t.runner.calls[0].command, "sd push");
+  } finally {
+    t.cleanup();
+  }
 });
 
 test("GitBackend.clone: runs git clone with quoted dir in ctx.cwd", async () => {

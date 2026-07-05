@@ -64,17 +64,64 @@ class GitBackend implements VcsBackend {
   }
 }
 
-const gitBackend = new GitBackend();
+// soda's pull emits a JSON envelope. A reconcile that integrated nothing
+// reports a record with status "up-to-date", the soda analogue of git's
+// "Already up to date." If the envelope cannot be parsed we cannot confirm a
+// no-change, so we report changed and let the caller reconcile rather than
+// silently skipping a build.
+function sodaReportedUpToDate(stdout: string): boolean {
+  try {
+    const parsed = JSON.parse(stdout) as { data?: Array<{ status?: string }> };
+    const records = parsed.data ?? [];
+    return records.length > 0 && records.every((r) => r.status === "up-to-date");
+  } catch {
+    return false;
+  }
+}
 
-// Resolve the backend for an explicitly declared vcs value. SodaBackend is
-// registered in a later phase; until then "sd" fails loudly rather than
-// silently pretending git grammar works.
+// soda (binary sd) is a changelist overlay, not a git-CLI drop-in. It clones
+// and pulls with its own verbs, auto-opens changed files into the default
+// changelist (no staging step), submits a changelist as a git commit, and
+// publishes with push.
+class SodaBackend implements VcsBackend {
+  readonly vcs = "sd" as const;
+  readonly bin = "sd";
+
+  async clone(ctx: MarshalContext, url: string, dir: string): Promise<void> {
+    await ctx.runner.exec(`sd clone ${url} "${dir}"`, { cwd: ctx.cwd, inherit: false });
+  }
+
+  async pull(ctx: MarshalContext, dir: string, opts: { inherit?: boolean } = {}): Promise<PullResult> {
+    const result = await ctx.runner.exec("sd pull", {
+      cwd: dir,
+      inherit: opts.inherit ?? false,
+    });
+    return { changed: !sodaReportedUpToDate(result.stdout) };
+  }
+
+  // soda tracks the whole workspace, so there is no per-file staging. Submitting
+  // the default changelist commits the pending manifest edit as one git commit.
+  // The file argument is part of the shared VcsBackend contract but soda does
+  // not need it.
+  async commitFile(ctx: MarshalContext, dir: string, _file: string, message: string): Promise<void> {
+    await ctx.runner.exec(`sd submit -d "${message}"`, { cwd: dir, inherit: false });
+  }
+
+  async push(ctx: MarshalContext, dir: string): Promise<void> {
+    await ctx.runner.exec("sd push", { cwd: dir, inherit: false });
+  }
+}
+
+const gitBackend = new GitBackend();
+const sodaBackend = new SodaBackend();
+
+// Resolve the backend for an explicitly declared vcs value.
 export function resolveBackend(vcs: Vcs = DEFAULT_VCS): VcsBackend {
   switch (vcs) {
     case "git":
       return gitBackend;
     case "sd":
-      throw new Error(`vcs "sd" is not yet supported`);
+      return sodaBackend;
     default: {
       const exhaustive: never = vcs;
       throw new Error(`unknown vcs: ${String(exhaustive)}`);

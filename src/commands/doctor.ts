@@ -5,6 +5,7 @@ import { MarshalContext } from "../context.js";
 import { readBinding } from "../binding.js";
 import { readManifest, MANIFEST_FILENAME, ManifestError } from "../manifest.js";
 import { ProcessError } from "../runners/types.js";
+import { Vcs, DEFAULT_VCS, resolveBackend } from "../vcs.js";
 
 // CheckResult shape is the convention across rotunda/reflux/kash/sp-tools.
 // Keep it stable: tooling and `--json` consumers depend on it.
@@ -110,12 +111,48 @@ function checkManifest(ctx: MarshalContext): CheckResult {
   }
 }
 
+// The set of version control binaries doctor must verify is derived from every
+// explicitly declared vcs value: the binding (dotfiles repo and self-update),
+// the manifest-level default, and each repo's override. When nothing is bound,
+// only the default backend is required.
+function requiredVcs(ctx: MarshalContext): Vcs[] {
+  const used = new Set<Vcs>();
+  const b = readBinding(ctx.homeDir);
+  if (b) {
+    used.add(b.vcs ?? DEFAULT_VCS);
+    if (existsSync(b.dotfilesRepo)) {
+      try {
+        const m = readManifest(b.dotfilesRepo);
+        used.add(m.vcs ?? DEFAULT_VCS);
+        for (const r of m.repos) {
+          used.add(r.vcs ?? m.vcs ?? DEFAULT_VCS);
+        }
+      } catch {
+        // checkManifest reports the parse/schema failure; binary derivation
+        // still needs a value, so the declared default applies here.
+      }
+    }
+  }
+  if (used.size === 0) {
+    used.add(DEFAULT_VCS);
+  }
+  return [...used];
+}
+
+function vcsInstallHint(vcs: Vcs): string {
+  return vcs === "sd"
+    ? "Install soda (sd) per your onboarding, then re-run"
+    : "Install Git: winget install Git.Git";
+}
+
 async function runChecks(ctx: MarshalContext): Promise<CheckResult[]> {
   const checks: Array<CheckResult | Promise<CheckResult>> = [
     checkNode(),
-    checkExecutable(ctx, "git", "Install Git: winget install Git.Git"),
-    checkExecutable(ctx, "npm", "Install Node.js (bundles npm): winget install OpenJS.NodeJS.LTS"),
   ];
+  for (const vcs of requiredVcs(ctx)) {
+    checks.push(checkExecutable(ctx, resolveBackend(vcs).bin, vcsInstallHint(vcs)));
+  }
+  checks.push(checkExecutable(ctx, "npm", "Install Node.js (bundles npm): winget install OpenJS.NodeJS.LTS"));
   if (ctx.platform === "win32") {
     checks.push(checkExecutable(ctx, "winget", "Install App Installer from the Microsoft Store"));
   }

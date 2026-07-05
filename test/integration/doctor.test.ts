@@ -86,6 +86,32 @@ test("doctor: invalid manifest surfaces specific error", async () => {
   }
 });
 
+test("doctor: derives an sd binary check from a declared sd repo", async () => {
+  const df = makeDotfilesRepo({
+    version: 1,
+    apps: [],
+    repos: [
+      { name: "git-tool", url: "u1" },
+      { name: "sd-tool", url: "u2", vcs: "sd" },
+    ],
+  });
+  const t = makeContext({ preBoundTo: df.dir });
+  t.runner.respond("git", { stdout: "git version 2" });
+  t.runner.respond("sd", { stdout: "sd 0.3.0" });
+  t.runner.respond("winget", { stdout: "wg" });
+  try {
+    const code = await doctorCommand(t.ctx, { json: true });
+    assert.equal(code, 0);
+    const raw = t.log.captured.find((l) => l.startsWith("raw:"))!.slice(5);
+    const names = JSON.parse(raw).checks.map((c: { name: string }) => c.name);
+    assert.ok(names.includes("git"), `expected git check in: ${names}`);
+    assert.ok(names.includes("sd"), `expected sd check in: ${names}`);
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
 test("doctor: human output shows ✓/✗ icons", async () => {
   const t = makeContext();
   t.runner.respond("git", { stdout: "git" });

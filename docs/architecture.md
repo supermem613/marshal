@@ -11,6 +11,7 @@
 - **`--json` everywhere.** Any command producing output supports `--json` for scriptable consumption (`status`, `list`, `doctor`).
 - **One source of truth.** Binding lives in exactly one place (`~/.marshal.json`). No env-var fallback, no walk-up-tree discovery — predictable across shells, terminals, IDEs, CI.
 - **Explicit profiles, no hostname routing.** `marshal.json` declares profile names and item membership. The active profile is chosen locally in `~/.marshal.json`; sync never infers it from hostname or a shared machine map.
+- **Explicit VCS backend, no auto-detection.** Every repo operation and marshal's own self-update route through a declared `VcsBackend` (`git` or `sd`/soda). The backend is chosen from config, never sniffed from the working tree. Each backend owns its command grammar and its own no-change signal, because soda is a changelist overlay rather than a git-CLI drop-in.
 
 ---
 
@@ -26,7 +27,8 @@
 | `src/platform.ts` | Platform detection and per-row platform filtering. |
 | `src/paths.ts` | `~` expansion, default `reposPath`, absolute resolution. |
 | `src/url.ts` | URL-vs-path detection (scheme-prefix only — Windows paths stay paths). |
-| `src/plan.ts` | Pure function: `manifest + platform → Plan { apps, repos, hooks, actions }`. |
+| `src/plan.ts` | Pure function: `manifest + platform → Plan { apps, repos, hooks, actions }`. Each repo step carries its resolved `vcs`. |
+| `src/vcs.ts` | `VcsBackend` interface + `GitBackend`/`SodaBackend` + `resolveBackend(vcs)`. Owns each backend's clone/pull/commit/push grammar, the `VcsSchema` zod enum, and `DEFAULT_VCS`. |
 | `src/apply.ts` | Sequential plan executor with per-step pass/fail capture, including interactive hooks. |
 | `src/render.ts` | Plan + result rendering (logger-pluggable). |
 | `src/runners/` | `RealProcessRunner` (`shell:true` for Windows .cmd shims) + `MockProcessRunner` (string/regex matchers, fail injection). |
@@ -50,6 +52,7 @@ src/
   paths.ts                ~ expansion, default reposPath
   url.ts                  URL-vs-path detection
   plan.ts                 Pure function: manifest → Plan
+  vcs.ts                  VcsBackend (git/soda) + resolveBackend + VcsSchema
   apply.ts                Sequential plan executor
   render.ts               Plan + result rendering
   runners/
@@ -66,7 +69,7 @@ src/
     status.ts             Machine state report (+ --json)
     list.ts               Full manifest dump (+ --json)
     profile.ts            Machine-local profile list/get/set/clear
-    doctor.ts             Env + binding + manifest checks (+ --json)
+    doctor.ts             Env + declared-vcs binaries + binding + manifest checks (+ --json)
     add.ts                Add or remove tool rows
     update.ts             Self-update
     cd.ts                 Cd / home subshells
