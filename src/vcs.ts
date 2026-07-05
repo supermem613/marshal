@@ -3,14 +3,14 @@ import { z } from "zod";
 
 // Every VCS-touching operation in marshal routes through a VcsBackend. The VCS
 // for each context is an explicitly declared choice, never auto-detected.
-// soda (binary sd) is not a git-CLI drop-in. It is a changelist overlay whose
-// verbs diverge from git (submit instead of commit, no add, JSON output, no
-// --ff-only). Each backend therefore owns its own command grammar and its own
-// no-change interpretation.
+// soda is not a git-CLI drop-in. It is a changelist overlay whose verbs diverge
+// from git (submit instead of commit, no add, JSON output, no --ff-only). Each
+// backend therefore owns its own command grammar and its own no-change
+// interpretation. The declared vcs value is "soda"; its executable is "sd".
 
-export type Vcs = "git" | "sd";
+export type Vcs = "git" | "soda";
 
-export const VCS_VALUES = ["git", "sd"] as const;
+export const VCS_VALUES = ["git", "soda"] as const;
 
 // Zod enum for validating a declared vcs value in manifest and binding schemas.
 export const VcsSchema = z.enum(VCS_VALUES);
@@ -79,12 +79,12 @@ function sodaReportedUpToDate(stdout: string): boolean {
   }
 }
 
-// soda (binary sd) is a changelist overlay, not a git-CLI drop-in. It clones
-// and pulls with its own verbs, auto-opens changed files into the default
-// changelist (no staging step), submits a changelist as a git commit, and
-// publishes with push.
+// soda is a changelist overlay, not a git-CLI drop-in. Its declared vcs value
+// is "soda" and its executable is "sd". It clones and pulls with its own verbs,
+// auto-opens changed files into the default changelist (no staging step),
+// submits a changelist as a git commit, and publishes with push.
 class SodaBackend implements VcsBackend {
-  readonly vcs = "sd" as const;
+  readonly vcs = "soda" as const;
   readonly bin = "sd";
 
   async clone(ctx: MarshalContext, url: string, dir: string): Promise<void> {
@@ -120,7 +120,7 @@ export function resolveBackend(vcs: Vcs = DEFAULT_VCS): VcsBackend {
   switch (vcs) {
     case "git":
       return gitBackend;
-    case "sd":
+    case "soda":
       return sodaBackend;
     default: {
       const exhaustive: never = vcs;

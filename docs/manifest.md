@@ -17,7 +17,7 @@ The manifest stores `setup`, `apps`, `npm`, `repos`, and `hooks` as arrays becau
 {
   "version": 1,
   "reposPath": "~/repos",            // optional; default ~/repos. Tool repos cloned to <reposPath>/<name>.
-  "vcs": "git",                      // optional; default git. Fleet-wide version control backend: "git" or "sd" (soda).
+  "vcs": "git",                      // optional; default git. Applies only to marshal self-update: "git" or "soda".
   "profiles": ["work-laptop", "personal-desktop"],  // optional declared profile names
 
   "setup": [                          // one-time machine bootstrap steps (run by `marshal setup`)
@@ -90,7 +90,7 @@ The manifest stores `setup`, `apps`, `npm`, `repos`, and `hooks` as arrays becau
 |-------|----------|---------|-------|
 | `version` | ✅ | — | Must be `1`. |
 | `reposPath` | | `~/repos` | Where tool repos are cloned. Tilde expansion supported. |
-| `vcs` | | `git` | Fleet-wide version control backend for repos and marshal self-update: `git` or `sd` (soda). Each repo may override with its own `vcs`. Declared explicitly; never auto-detected. |
+| `vcs` | | `git` | Version control backend for marshal's own self-update: `git` or `soda`. Applies only to marshal, never as a fleet default. Each repo declares its own `vcs` and defaults to `git`. Declared explicitly; never auto-detected. |
 | `profiles` | | `[]` | Declared profile names. Any item-level profile must appear here. |
 | `apps` | | `[]` | Winget packages installed before any repos. |
 | `npm` | | `[]` | npm global packages installed after apps, before repos. |
@@ -131,7 +131,7 @@ The manifest stores `setup`, `apps`, `npm`, `repos`, and `hooks` as arrays becau
 |-------|----------|-------|
 | `name` | ✅ | Kebab-case unique identifier. Becomes the folder name under `reposPath`. |
 | `url` | ✅ | Clonable URL (any form `git clone` accepts). |
-| `vcs` | | Version control backend for this repo: `git` or `sd` (soda). Overrides the top-level `vcs`. Absent = inherit the top-level `vcs` (else `git`). |
+| `vcs` | | Version control backend for this repo: `git` or `soda`. Absent = `git`. The top-level `vcs` is not inherited; it governs only marshal self-update. |
 | `platforms` | | Same as apps. |
 | `profiles` | | Same as apps. |
 | `install_cwd` | | Subdirectory inside the cloned repo where `install_cmd` and `update_cmd` run. Defaults to the repo root. Use this for monorepos (for example, when the CLI lives under `cli/`). |
@@ -229,15 +229,15 @@ For each repo applicable to the current platform, marshal picks one action:
 Every repo operation and marshal's own self-update route through an explicitly declared version control backend. Marshal never auto-detects the backend from the working tree.
 
 - `git` (default) drives `git clone`, `git pull --ff-only`, `git add` / `git commit`, and `git push`.
-- `sd` (soda) drives soda's changelist workflow instead. soda is not a git drop-in: it submits changelists rather than committing, and reports its own no-change signal.
+- `soda` drives soda's changelist workflow instead. soda is not a git drop-in: it submits changelists rather than committing, and reports its own no-change signal. Its declared `vcs` value is `soda`; its executable is `sd`.
 
 Resolution precedence:
 
-- **Per repo:** the repo's own `vcs`, else the top-level `vcs`, else `git`.
+- **Per repo:** the repo's own `vcs`, else `git`. The top-level `vcs` is never inherited by repos.
 - **marshal self-update:** the top-level `vcs` of the bound dotfiles `marshal.json`, else `git`.
 - **The dotfiles repo itself** (the pulls and commits `marshal add` / `marshal profile` make to `marshal.json`): the `vcs` declared in the `~/.marshal.json` binding, else `git`.
 
-A fleet can mix backends: declare a fleet-wide `vcs` and override individual repos as needed.
+A fleet can mix backends by declaring `vcs` on individual repos as needed. The top-level `vcs` sets only marshal's own self-update backend.
 
 ### Platform filtering
 
@@ -262,7 +262,7 @@ Manage with:
 
 ```pwsh
 marshal bind <url-or-path>     # set / re-bind
-marshal bind <url-or-path> --vcs sd   # set / re-bind and declare the dotfiles backend
+marshal bind <url-or-path> --vcs soda   # set / re-bind and declare the dotfiles backend
 marshal bind --show            # print current binding
 marshal bind --unset           # forget binding
 marshal where                  # print just the path (one line, scriptable)
@@ -280,7 +280,7 @@ marshal profile remove work-laptop
 
 The binding refuses to point at a directory that doesn't contain a `marshal.json`, so you can't accidentally bind to a non-marshal repo.
 
-`vcs` is optional and defaults to `git`. It declares the version control backend for the dotfiles repo itself: the pulls and commits marshal makes to `marshal.json` during `marshal add` and `marshal profile`, plus marshal's self-update. Set it to `sd` when the dotfiles repo is a soda repo. Declare it durably with `marshal bind <url-or-path> --vcs sd`, which also routes the initial clone through that backend. Re-binding and profile changes preserve the declared `vcs`; omit `--vcs` to keep the current value.
+`vcs` is optional and defaults to `git`. It declares the version control backend for the dotfiles repo itself: the pulls and commits marshal makes to `marshal.json` during `marshal add` and `marshal profile`, plus marshal's self-update. Set it to `soda` when the dotfiles repo is a soda repo. Declare it durably with `marshal bind <url-or-path> --vcs soda`, which also routes the initial clone through that backend. Re-binding and profile changes preserve the declared `vcs`; omit `--vcs` to keep the current value.
 
 `profile` is optional for legacy manifests. Once the manifest contains profile-scoped items, set it with `marshal profile set <name>` before syncing. Re-binding preserves the existing local profile; sync re-validates it against the newly bound manifest. Use `profile add` and `profile remove` for the shared manifest's declared profiles. Use `profile scope <app|npm|setup|repo|hook> <profile> <items...>` and `profile unscope <app|npm|setup|repo|hook> <profile> <items...>` to update one or more existing item scopes.
 

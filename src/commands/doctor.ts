@@ -112,9 +112,9 @@ function checkManifest(ctx: MarshalContext): CheckResult {
 }
 
 // The set of version control binaries doctor must verify is derived from every
-// explicitly declared vcs value: the binding (dotfiles repo and self-update),
-// the manifest-level default, and each repo's override. When nothing is bound,
-// only the default backend is required.
+// explicitly declared vcs value: the binding and manifest-level vcs (marshal's
+// own dotfiles repo and self-update) and each repo's own vcs. The manifest-level
+// vcs is not a fleet default, so repos that omit vcs contribute git.
 function requiredVcs(ctx: MarshalContext): Vcs[] {
   const used = new Set<Vcs>();
   const b = readBinding(ctx.homeDir);
@@ -125,7 +125,7 @@ function requiredVcs(ctx: MarshalContext): Vcs[] {
         const m = readManifest(b.dotfilesRepo);
         used.add(m.vcs ?? DEFAULT_VCS);
         for (const r of m.repos) {
-          used.add(r.vcs ?? m.vcs ?? DEFAULT_VCS);
+          used.add(r.vcs ?? DEFAULT_VCS);
         }
       } catch {
         // checkManifest reports the parse/schema failure; binary derivation
@@ -140,7 +140,7 @@ function requiredVcs(ctx: MarshalContext): Vcs[] {
 }
 
 function vcsInstallHint(vcs: Vcs): string {
-  return vcs === "sd"
+  return vcs === "soda"
     ? "Install soda (sd) per your onboarding, then re-run"
     : "Install Git: winget install Git.Git";
 }

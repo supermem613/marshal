@@ -11,9 +11,9 @@ Full reference for every `marshal` subcommand. Run `marshal --help` for the same
 | `add-npm` | `marshal add-npm <name>` | Append one npm global package to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--platforms`, `--profiles`, `--sync`, `-y`. Manifest-field option help is read from the schema metadata. |
 | `add-hook` | `marshal add-hook <name> --cmd "<cmd>"` | Append one sync hook to the manifest. Manifest-only by default; pass `--sync` to apply immediately. Flags: `--cwd`, `--interactive`, `--platforms`, `--profiles`, `--sync`, `-y`. Manifest-field option help is read from the schema metadata. |
 | `add-setup` | `marshal add-setup <name> --cmd "<cmd>"` | Append one one-time setup step to the manifest. Manifest-only by default. Flags: `--check-cmd`, `--no-interactive`, `--platforms`, `--profiles`, `-y`. Manifest-field option help is read from the schema metadata. |
-| `bind` | `marshal bind <url\|path>` | Bind to a dotfiles repo. URLs auto-clone + provision; paths just record the binding. Flags: `--path <p>`, `--show`, `--unset`, `--no-sync`, `-y`. |
+| `bind` | `marshal bind <url\|path>` | Bind to a dotfiles repo. URLs auto-clone + provision; paths just record the binding. Flags: `--path <p>`, `--vcs <git\|soda>`, `--show`, `--unset`, `--no-sync`, `-y`. |
 | `cd` | `marshal cd` | Spawn a subshell rooted at the bound dotfiles repo (like `chezmoi cd`). |
-| `doctor` | `marshal doctor` | Health check: Node version, git, winget (Win32), npm, binding, manifest. `--json` supported. |
+| `doctor` | `marshal doctor` | Health check: Node version, git, winget (Win32), npm, the declared VCS binaries (e.g. `sd` when soda is used), binding, manifest. `--json` supported. |
 | `home` | `marshal home` | Spawn a subshell rooted at the marshal source repo. |
 | `init` | `marshal init` | Create a minimal `marshal.json` in the current directory and record the binding. `--no-bind` to skip binding. |
 | `list` | `marshal list` | Print the full manifest contents (setup, apps, npm, repos, hooks, with platform filters). `--json` supported. |

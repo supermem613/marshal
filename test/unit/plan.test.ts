@@ -73,6 +73,29 @@ test("buildPlan: empty manifest yields empty plan", () => {
   }
 });
 
+test("buildPlan: repo vcs resolves per-repo only; top-level vcs is not a fleet default", () => {
+  const home = mkdtempSync(join(tmpdir(), "marshal-plan-"));
+  try {
+    // Top-level vcs applies only to marshal self-update. A repo that omits vcs
+    // must resolve to git regardless of the marshal-level vcs.
+    const m = makeManifest({
+      vcs: "soda",
+      repos: [
+        { name: "inherits-nothing", url: "u1" },
+        { name: "explicit-soda", url: "u2", vcs: "soda" },
+        { name: "explicit-git", url: "u3", vcs: "git" },
+      ],
+    });
+    const p = buildPlan(m, { homeDir: home, dotfilesRepo: home, platform: "win32" });
+    const byName = Object.fromEntries(p.repos.map((r) => [r.name, r.vcs]));
+    assert.equal(byName["inherits-nothing"], "git");
+    assert.equal(byName["explicit-soda"], "soda");
+    assert.equal(byName["explicit-git"], "git");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("buildPlan: filters apps and repos by platform", () => {
   const home = mkdtempSync(join(tmpdir(), "marshal-plan-"));
   try {

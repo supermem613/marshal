@@ -87,7 +87,7 @@ test("update: uses soda primitives when marshal-level vcs is sd", async () => {
   withSrcDir(async (srcDir) => {
     mkdirSync(join(srcDir, ".git"), { recursive: true });
     writeFileSync(join(srcDir, "package.json"), "{}");
-    const df = makeDotfilesRepo({ version: 1, vcs: "sd" });
+    const df = makeDotfilesRepo({ version: 1, vcs: "soda" });
     const t = makeContext({ marshalSourceDir: srcDir, preBoundTo: df.dir });
     t.runner.respond("sd pull", { code: 0, stdout: JSON.stringify({ data: [{ status: "changed" }] }) });
     t.runner.respond("npm install", { code: 0 });
@@ -111,7 +111,7 @@ test("update: skips rebuild when sd pull reports up to date", async () => {
   withSrcDir(async (srcDir) => {
     mkdirSync(join(srcDir, ".git"), { recursive: true });
     writeFileSync(join(srcDir, "package.json"), "{}");
-    const df = makeDotfilesRepo({ version: 1, vcs: "sd" });
+    const df = makeDotfilesRepo({ version: 1, vcs: "soda" });
     const t = makeContext({ marshalSourceDir: srcDir, preBoundTo: df.dir });
     t.runner.respond("sd pull", { code: 0, stdout: JSON.stringify({ data: [{ status: "up-to-date" }] }) });
     try {

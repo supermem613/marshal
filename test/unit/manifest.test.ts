@@ -252,12 +252,12 @@ test("readManifest: returns parsed manifest with defaults", () => {
 test("ManifestSchema: accepts per-repo and marshal-level vcs", () => {
   const r = ManifestSchema.safeParse({
     version: 1,
-    vcs: "sd",
+    vcs: "soda",
     repos: [{ name: "tool-a", url: "https://x/a.git", vcs: "git" }],
   });
   assert.ok(r.success, JSON.stringify(r));
   if (r.success) {
-    assert.equal(r.data.vcs, "sd");
+    assert.equal(r.data.vcs, "soda");
     assert.equal(r.data.repos[0].vcs, "git");
   }
 });

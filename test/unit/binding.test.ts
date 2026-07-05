@@ -165,9 +165,9 @@ test("requireBinding returns binding when set", () => {
 test("readBinding: preserves a declared vcs value", () => {
   const f = fresh();
   try {
-    writeFileSync(bindingPath(f.home), JSON.stringify({ version: 1, dotfilesRepo: "C:/df", vcs: "sd" }));
+    writeFileSync(bindingPath(f.home), JSON.stringify({ version: 1, dotfilesRepo: "C:/df", vcs: "soda" }));
     const b = readBinding(f.home);
-    assert.equal(b?.vcs, "sd");
+    assert.equal(b?.vcs, "soda");
   } finally {
     f.cleanup();
   }
@@ -187,10 +187,10 @@ test("writeBinding sets vcs when provided and roundtrips", () => {
   const { home, cleanup } = fresh();
   const df = makeDotfiles();
   try {
-    const w = writeBinding(df.dir, home, "sd");
-    assert.equal(w.vcs, "sd");
+    const w = writeBinding(df.dir, home, "soda");
+    assert.equal(w.vcs, "soda");
     const r = readBinding(home);
-    assert.equal(r?.vcs, "sd");
+    assert.equal(r?.vcs, "soda");
   } finally {
     cleanup();
     df.cleanup();
@@ -202,10 +202,10 @@ test("writeBinding preserves an existing vcs when none is provided", () => {
   const df1 = makeDotfiles();
   const df2 = makeDotfiles();
   try {
-    writeFileSync(bindingPath(home), JSON.stringify({ version: 1, dotfilesRepo: df1.dir, vcs: "sd" }));
+    writeFileSync(bindingPath(home), JSON.stringify({ version: 1, dotfilesRepo: df1.dir, vcs: "soda" }));
     const w = writeBinding(df2.dir, home);
     assert.equal(w.dotfilesRepo, df2.dir);
-    assert.equal(w.vcs, "sd");
+    assert.equal(w.vcs, "soda");
   } finally {
     cleanup();
     df1.cleanup();
@@ -217,7 +217,7 @@ test("writeBinding overrides an existing vcs when a new one is provided", () => 
   const { home, cleanup } = fresh();
   const df = makeDotfiles();
   try {
-    writeFileSync(bindingPath(home), JSON.stringify({ version: 1, dotfilesRepo: df.dir, vcs: "sd" }));
+    writeFileSync(bindingPath(home), JSON.stringify({ version: 1, dotfilesRepo: df.dir, vcs: "soda" }));
     const w = writeBinding(df.dir, home, "git");
     assert.equal(w.vcs, "git");
   } finally {
@@ -230,10 +230,10 @@ test("writeBindingProfile preserves an existing vcs", () => {
   const { home, cleanup } = fresh();
   const df = makeDotfiles();
   try {
-    writeBinding(df.dir, home, "sd");
+    writeBinding(df.dir, home, "soda");
     const w = writeBindingProfile("work", home);
     assert.equal(w.profile, "work");
-    assert.equal(w.vcs, "sd");
+    assert.equal(w.vcs, "soda");
   } finally {
     cleanup();
     df.cleanup();

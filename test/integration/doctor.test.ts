@@ -92,7 +92,7 @@ test("doctor: derives an sd binary check from a declared sd repo", async () => {
     apps: [],
     repos: [
       { name: "git-tool", url: "u1" },
-      { name: "sd-tool", url: "u2", vcs: "sd" },
+      { name: "sd-tool", url: "u2", vcs: "soda" },
     ],
   });
   const t = makeContext({ preBoundTo: df.dir });

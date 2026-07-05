@@ -60,7 +60,7 @@ export const ManifestFieldDocs = {
       description: "Clonable URL accepted by git clone.",
     },
     vcs: {
-      description: "Version control backend for this repo: git or sd (soda). Absent inherits the marshal-level vcs.",
+      description: "Version control backend for this repo: git or soda. Absent defaults to git.",
     },
     platforms: {
       description: "Array of platform names. Absent means all platforms.",
@@ -212,7 +212,7 @@ const SetupSchema = z.object({
 
 export const ManifestSchema = z.object({
   version: z.literal(1),
-  vcs: VcsSchema.optional().describe("Marshal-level version control backend used for self-update and as the default for repos that omit vcs."),
+  vcs: VcsSchema.optional().describe("Version control backend for marshal's own self-update: git or soda. Applies only to marshal; each repo declares its own vcs and defaults to git."),
   reposPath: z.string().optional(),
   profiles: z.array(ProfileNameSchema).default([]),
   apps: z.array(AppSchema).default([]),

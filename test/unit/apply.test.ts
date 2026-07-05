@@ -392,7 +392,7 @@ test("applyPlan: mixed fleet routes each repo through its declared vcs", async (
           updateCmd: null,
           action: "clone",
           exists: false,
-          vcs: "sd",
+          vcs: "soda",
         },
       ],
       reposPath,

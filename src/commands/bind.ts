@@ -56,7 +56,7 @@ export async function bindCommand(
   if (opts.vcs !== undefined) {
     const parsed = VcsSchema.safeParse(opts.vcs);
     if (!parsed.success) {
-      ctx.log.error(`bind: invalid --vcs "${opts.vcs}". Expected one of: git, sd.`);
+      ctx.log.error(`bind: invalid --vcs "${opts.vcs}". Expected one of: git, soda.`);
       return 2;
     }
     vcs = parsed.data;

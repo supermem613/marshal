@@ -11,7 +11,7 @@
 - **`--json` everywhere.** Any command producing output supports `--json` for scriptable consumption (`status`, `list`, `doctor`).
 - **One source of truth.** Binding lives in exactly one place (`~/.marshal.json`). No env-var fallback, no walk-up-tree discovery — predictable across shells, terminals, IDEs, CI.
 - **Explicit profiles, no hostname routing.** `marshal.json` declares profile names and item membership. The active profile is chosen locally in `~/.marshal.json`; sync never infers it from hostname or a shared machine map.
-- **Explicit VCS backend, no auto-detection.** Every repo operation and marshal's own self-update route through a declared `VcsBackend` (`git` or `sd`/soda). The backend is chosen from config, never sniffed from the working tree. Each backend owns its command grammar and its own no-change signal, because soda is a changelist overlay rather than a git-CLI drop-in.
+- **Explicit VCS backend, no auto-detection.** Every repo operation and marshal's own self-update route through a declared `VcsBackend` (`git` or `soda`, the latter running the `sd` executable). The backend is chosen from config, never sniffed from the working tree. Each backend owns its command grammar and its own no-change signal, because soda is a changelist overlay rather than a git-CLI drop-in. The top-level `vcs` governs only marshal self-update; each repo declares its own `vcs` and defaults to `git`.
 
 ---
 

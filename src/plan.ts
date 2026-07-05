@@ -128,7 +128,9 @@ export function buildPlan(manifest: Manifest, opts: BuildPlanOptions): Plan {
         updateCmd,
         action,
         exists,
-        vcs: r.vcs ?? manifest.vcs ?? DEFAULT_VCS,
+        // Per-repo vcs is explicit or defaults to git. The top-level manifest
+        // vcs governs only marshal self-update, never the fleet default.
+        vcs: r.vcs ?? DEFAULT_VCS,
       };
     });
 

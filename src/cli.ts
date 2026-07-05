@@ -59,7 +59,7 @@ program
   .command("bind [target]")
   .description("Bind marshal to a dotfiles repo. <target> is a clonable URL or a local path.")
   .option("--path <path>", "Where to clone the dotfiles repo (when <target> is a URL). Default: ~/repos/<repo-name>")
-  .option("--vcs <vcs>", "Version control backend for the dotfiles repo: git or sd. Default: git")
+  .option("--vcs <vcs>", "Version control backend for the dotfiles repo: git or soda. Default: git")
   .option("--show", "Print the current binding")
   .option("--unset", "Clear the current binding")
   .option("--no-sync", "Skip auto-sync after URL bind")
