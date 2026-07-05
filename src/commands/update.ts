@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
 import { MarshalContext } from "../context.js";
-import { gitPullMadeNoChanges } from "../command-state.js";
 import { ProcessError } from "../runners/types.js";
 
 // `marshal update` — self-update. Runs git pull in marshal's own source
@@ -16,8 +15,8 @@ export async function updateCommand(ctx: MarshalContext): Promise<number> {
   ctx.log.info("→ git pull --ff-only");
   let pullChanged = true;
   try {
-    const pull = await ctx.runner.exec("git pull --ff-only", { cwd: ctx.marshalSourceDir, inherit: true });
-    pullChanged = !gitPullMadeNoChanges(pull);
+    const pull = await ctx.backendFor("git").pull(ctx, ctx.marshalSourceDir, { inherit: true });
+    pullChanged = pull.changed;
   } catch (err) {
     const msg = err instanceof ProcessError ? err.message.split("\n")[0] : (err as Error).message;
     ctx.log.error(`Failed: git pull --ff-only — ${msg}`);

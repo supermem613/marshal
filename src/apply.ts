@@ -4,7 +4,6 @@ import { MarshalContext } from "./context.js";
 import { Plan, RepoStep, AppStep, NpmStep, HookStep, SetupStep } from "./plan.js";
 import { ExecutionResult } from "./render.js";
 import { ProcessError } from "./runners/types.js";
-import { gitPullMadeNoChanges } from "./command-state.js";
 
 // Apply a Plan: install apps in order, then provision repos sequentially.
 // Each step's pass/fail is captured in the returned ExecutionResult[]; one
@@ -236,7 +235,7 @@ async function provisionRepo(ctx: MarshalContext, repo: RepoStep): Promise<Execu
     if (repo.action === "clone-and-install") {
       mkdirSync(dirname(repo.targetDir), { recursive: true });
       ctx.log.info(`→ git clone ${repo.url} ${repo.targetDir}`);
-      await ctx.runner.exec(`git clone ${repo.url} "${repo.targetDir}"`, { cwd: ctx.cwd, inherit: false });
+      await ctx.backendFor("git").clone(ctx, repo.url, repo.targetDir);
       ctx.log.info(`→ (${repo.installCwd}) ${repo.installCmd}`);
       await ctx.runner.exec(repo.installCmd as string, { cwd: repo.installCwd, inherit: false });
       return { step: `repo: ${repo.name}`, ok: true, detail: "cloned + installed" };
@@ -244,7 +243,7 @@ async function provisionRepo(ctx: MarshalContext, repo: RepoStep): Promise<Execu
     if (repo.action === "clone") {
       mkdirSync(dirname(repo.targetDir), { recursive: true });
       ctx.log.info(`→ git clone ${repo.url} ${repo.targetDir}`);
-      await ctx.runner.exec(`git clone ${repo.url} "${repo.targetDir}"`, { cwd: ctx.cwd, inherit: false });
+      await ctx.backendFor("git").clone(ctx, repo.url, repo.targetDir);
       return { step: `repo: ${repo.name}`, ok: true, detail: "cloned" };
     }
     if (repo.action === "update") {
@@ -254,8 +253,8 @@ async function provisionRepo(ctx: MarshalContext, repo: RepoStep): Promise<Execu
     }
     // pull-and-install or pull
     ctx.log.info(`→ (${repo.targetDir}) git pull --ff-only`);
-    const pull = await ctx.runner.exec(`git pull --ff-only`, { cwd: repo.targetDir, inherit: false });
-    if (gitPullMadeNoChanges(pull)) {
+    const pull = await ctx.backendFor("git").pull(ctx, repo.targetDir);
+    if (!pull.changed) {
       return { step: `repo: ${repo.name}`, ok: true, detail: "already up to date" };
     }
     if (!repo.installCmd) {

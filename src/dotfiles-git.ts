@@ -4,7 +4,7 @@ import { ProcessError } from "./runners/types.js";
 export async function pullDotfilesRepo(ctx: MarshalContext, dotfilesRepo: string): Promise<boolean> {
   ctx.log.info(`→ (${dotfilesRepo}) git pull --ff-only`);
   try {
-    await ctx.runner.exec("git pull --ff-only", { cwd: dotfilesRepo, inherit: false });
+    await ctx.backendFor("git").pull(ctx, dotfilesRepo);
     return true;
   } catch (err) {
     if (err instanceof ProcessError) {

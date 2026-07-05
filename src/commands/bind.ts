@@ -68,7 +68,7 @@ async function bindUrl(ctx: MarshalContext, url: string, opts: BindOptions): Pro
   } else {
     ctx.log.info(`→ git clone ${url} ${targetPath}`);
     try {
-      await ctx.runner.exec(`git clone ${url} "${targetPath}"`, { cwd: ctx.cwd, inherit: false });
+      await ctx.backendFor("git").clone(ctx, url, targetPath);
     } catch (err) {
       ctx.log.error(`Clone failed: ${(err as Error).message.split("\n")[0]}`);
       return 1;

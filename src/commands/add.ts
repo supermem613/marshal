@@ -655,15 +655,14 @@ function isValidHookCwd(cwd: string): boolean {
 // Best-effort: logs warnings on failure but does not fail the command.
 export async function commitAndPush(ctx: MarshalContext, dotfilesRepo: string, message: string): Promise<void> {
   try {
-    await ctx.runner.exec(`git add ${MANIFEST_FILENAME}`, { cwd: dotfilesRepo, inherit: false });
-    await ctx.runner.exec(`git commit -m "${message}"`, { cwd: dotfilesRepo, inherit: false });
+    await ctx.backendFor("git").commitFile(ctx, dotfilesRepo, MANIFEST_FILENAME, message);
   } catch (err) {
     const detail = err instanceof ProcessError ? err.result.stderr || err.result.stdout : (err as Error).message;
     ctx.log.warn(`Failed to commit ${MANIFEST_FILENAME}: ${detail.trim().split("\n")[0]}`);
     return;
   }
   try {
-    await ctx.runner.exec(`git push`, { cwd: dotfilesRepo, inherit: false });
+    await ctx.backendFor("git").push(ctx, dotfilesRepo);
     ctx.log.success(`Committed and pushed ${MANIFEST_FILENAME}`);
   } catch (err) {
     const detail = err instanceof ProcessError ? err.result.stderr || err.result.stdout : (err as Error).message;
