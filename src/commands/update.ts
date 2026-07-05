@@ -15,14 +15,15 @@ export async function updateCommand(ctx: MarshalContext): Promise<number> {
     return 1;
   }
   ctx.log.info(`Self-update in ${ctx.marshalSourceDir}`);
-  ctx.log.info("→ git pull --ff-only");
+  const backend = ctx.backendFor(resolveMarshalVcs(ctx));
+  ctx.log.info(`→ ${backend.bin} pull`);
   let pullChanged = true;
   try {
-    const pull = await ctx.backendFor(resolveMarshalVcs(ctx)).pull(ctx, ctx.marshalSourceDir, { inherit: true });
+    const pull = await backend.pull(ctx, ctx.marshalSourceDir, { inherit: true });
     pullChanged = pull.changed;
   } catch (err) {
     const msg = err instanceof ProcessError ? err.message.split("\n")[0] : (err as Error).message;
-    ctx.log.error(`Failed: git pull --ff-only — ${msg}`);
+    ctx.log.error(`Failed: ${backend.bin} pull — ${msg}`);
     return 1;
   }
   if (!pullChanged) {
