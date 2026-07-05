@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { makeContext } from "../helpers.js";
+import { makeContext, makeDotfilesRepo } from "../helpers.js";
 import { updateCommand } from "../../src/commands/update.js";
 
 function withSrcDir<T>(fn: (dir: string) => T): T {
@@ -79,6 +79,48 @@ test("update: skips npm install and npm run build for legacy git no-change outpu
       assert.deepEqual(t.runner.calls.map((c) => c.command), ["git pull --ff-only"]);
     } finally {
       t.cleanup();
+    }
+  });
+});
+
+test("update: uses soda primitives when marshal-level vcs is sd", async () => {
+  withSrcDir(async (srcDir) => {
+    mkdirSync(join(srcDir, ".git"), { recursive: true });
+    writeFileSync(join(srcDir, "package.json"), "{}");
+    const df = makeDotfilesRepo({ version: 1, vcs: "sd" });
+    const t = makeContext({ marshalSourceDir: srcDir, preBoundTo: df.dir });
+    t.runner.respond("sd pull", { code: 0, stdout: JSON.stringify({ data: [{ status: "changed" }] }) });
+    t.runner.respond("npm install", { code: 0 });
+    t.runner.respond("npm run build", { code: 0 });
+    try {
+      const code = await updateCommand(t.ctx);
+      assert.equal(code, 0);
+      assert.deepEqual(
+        t.runner.calls.map((c) => c.command),
+        ["sd pull", "npm install", "npm run build"],
+      );
+      assert.ok(t.log.captured.some((l) => l.includes("sd pull")), t.log.captured.join(" | "));
+    } finally {
+      t.cleanup();
+      df.cleanup();
+    }
+  });
+});
+
+test("update: skips rebuild when sd pull reports up to date", async () => {
+  withSrcDir(async (srcDir) => {
+    mkdirSync(join(srcDir, ".git"), { recursive: true });
+    writeFileSync(join(srcDir, "package.json"), "{}");
+    const df = makeDotfilesRepo({ version: 1, vcs: "sd" });
+    const t = makeContext({ marshalSourceDir: srcDir, preBoundTo: df.dir });
+    t.runner.respond("sd pull", { code: 0, stdout: JSON.stringify({ data: [{ status: "up-to-date" }] }) });
+    try {
+      const code = await updateCommand(t.ctx);
+      assert.equal(code, 0);
+      assert.deepEqual(t.runner.calls.map((c) => c.command), ["sd pull"]);
+    } finally {
+      t.cleanup();
+      df.cleanup();
     }
   });
 });

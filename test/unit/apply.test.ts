@@ -356,6 +356,62 @@ test("applyPlan: multiple apps skipped still yields correct step names", async (
   }
 });
 
+// --- mixed-vcs fleet routing ---
+
+test("applyPlan: mixed fleet routes each repo through its declared vcs", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond(/^git clone/, { code: 0 });
+  t.runner.respond(/^sd clone/, { code: 0 });
+  try {
+    const reposPath = join(t.homeDir, "repos");
+    const gitDir = join(reposPath, "git-tool");
+    const sdDir = join(reposPath, "sd-tool");
+    const plan: Plan = {
+      apps: [],
+      npm: [],
+      hooks: [],
+      setup: [],
+      repos: [
+        {
+          name: "git-tool",
+          url: "https://x/git-tool.git",
+          targetDir: gitDir,
+          installCwd: gitDir,
+          installCmd: null,
+          updateCmd: null,
+          action: "clone",
+          exists: false,
+          vcs: "git",
+        },
+        {
+          name: "sd-tool",
+          url: "https://x/sd-tool.git",
+          targetDir: sdDir,
+          installCwd: sdDir,
+          installCmd: null,
+          updateCmd: null,
+          action: "clone",
+          exists: false,
+          vcs: "sd",
+        },
+      ],
+      reposPath,
+      platform: "win32",
+      activeProfile: { profile: null, source: "none" },
+    };
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results.length, 2);
+    assert.ok(results.every((r) => r.ok), JSON.stringify(results));
+    const cloneCmds = t.runner.calls.map((c) => c.command).filter((c) => c.includes("clone"));
+    assert.deepEqual(cloneCmds, [
+      `git clone https://x/git-tool.git "${gitDir}"`,
+      `sd clone https://x/sd-tool.git "${sdDir}"`,
+    ]);
+  } finally {
+    t.cleanup();
+  }
+});
+
 // --- setup steps ---
 
 function setupPlan(t: ReturnType<typeof makeContext>, setup: Plan["setup"]): Plan {

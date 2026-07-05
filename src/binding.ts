@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { z } from "zod";
 import { MANIFEST_FILENAME } from "./manifest.js";
+import { VcsSchema, Vcs } from "./vcs.js";
 
 // `~/.marshal.json` — per-machine global config. Holds the absolute path of
 // the dotfiles repo this machine is bound to. Single source of truth: no
@@ -13,6 +14,7 @@ export const BINDING_FILENAME = ".marshal.json";
 export const BindingSchema = z.object({
   version: z.literal(1),
   dotfilesRepo: z.string().min(1),
+  vcs: VcsSchema.optional(),
   profile: z.string().regex(/^[a-z0-9][a-z0-9-]*$/i, "profile must be alphanumeric/hyphen").optional(),
 });
 
@@ -55,7 +57,9 @@ export function readBinding(home: string = homedir()): Binding | null {
 
 // Validates the target directory contains a marshal.json before persisting
 // the binding — refuses to bind to a non-marshal repo (rotunda convention).
-export function writeBinding(dotfilesRepo: string, home: string = homedir()): Binding {
+// When vcs is omitted the previously declared vcs is preserved, so re-binding
+// or profile changes never silently erase a declared backend.
+export function writeBinding(dotfilesRepo: string, home: string = homedir(), vcs?: Vcs): Binding {
   if (!existsSync(dotfilesRepo)) {
     throw new BindingError(`Dotfiles repo path does not exist: ${dotfilesRepo}`);
   }
@@ -66,9 +70,11 @@ export function writeBinding(dotfilesRepo: string, home: string = homedir()): Bi
   const path = bindingPath(home);
   mkdirSync(dirname(path), { recursive: true });
   const existing = readBinding(home);
+  const resolvedVcs = vcs ?? existing?.vcs;
   const binding: Binding = {
     version: 1,
     dotfilesRepo,
+    ...(resolvedVcs ? { vcs: resolvedVcs } : {}),
     ...(existing?.profile ? { profile: existing.profile } : {}),
   };
   writeFileSync(path, JSON.stringify(binding, null, 2) + "\n", "utf8");
@@ -81,6 +87,7 @@ export function writeBindingProfile(profile: string | null, home: string = homed
   const binding: Binding = {
     version: 1,
     dotfilesRepo: existing.dotfilesRepo,
+    ...(existing.vcs ? { vcs: existing.vcs } : {}),
     ...(profile ? { profile } : {}),
   };
   writeFileSync(path, JSON.stringify(binding, null, 2) + "\n", "utf8");

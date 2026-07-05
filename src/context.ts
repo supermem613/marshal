@@ -8,6 +8,7 @@ import { RealProcessRunner } from "./runners/real.js";
 import { Logger, ConsoleLogger } from "./ui/log.js";
 import { Prompter, StdinPrompter } from "./ui/prompt.js";
 import { bindingPath } from "./binding.js";
+import { Vcs, VcsBackend, resolveBackend } from "./vcs.js";
 
 // Single dependency-injection seam. Every command takes a MarshalContext as
 // its first argument. Production wiring uses createDefaultContext(); tests
@@ -22,6 +23,8 @@ export interface MarshalContext {
   log: Logger;
   prompt: Prompter;
   cwd: string;
+  // Resolve the VcsBackend for an explicitly declared vcs value.
+  backendFor(vcs: Vcs): VcsBackend;
 }
 
 // Resolve the on-disk source directory of the running marshal install.
@@ -60,5 +63,6 @@ export function createDefaultContext(importMetaUrl: string): MarshalContext {
     log: new ConsoleLogger(),
     prompt: new StdinPrompter(),
     cwd: process.cwd(),
+    backendFor: resolveBackend,
   };
 }

@@ -6,6 +6,7 @@ import { Platform } from "../src/platform.js";
 import { MockProcessRunner } from "../src/runners/mock.js";
 import { CaptureLogger } from "../src/ui/log.js";
 import { CannedPrompter } from "../src/ui/prompt.js";
+import { resolveBackend } from "../src/vcs.js";
 
 // Test fixtures and helpers. Each test that mutates the filesystem should
 // pair makeSandbox() with a try/finally that calls cleanup() so the tmp
@@ -57,6 +58,7 @@ export function makeContext(opts: MakeContextOptions = {}): TestContext {
     log,
     prompt,
     cwd: opts.cwd ?? homeDir,
+    backendFor: resolveBackend,
   };
   return {
     ctx,
