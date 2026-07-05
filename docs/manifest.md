@@ -17,6 +17,7 @@ The manifest stores `setup`, `apps`, `npm`, `repos`, and `hooks` as arrays becau
 {
   "version": 1,
   "reposPath": "~/repos",            // optional; default ~/repos. Tool repos cloned to <reposPath>/<name>.
+  "vcs": "git",                      // optional; default git. Fleet-wide version control backend: "git" or "sd" (soda).
   "profiles": ["work-laptop", "personal-desktop"],  // optional declared profile names
 
   "setup": [                          // one-time machine bootstrap steps (run by `marshal setup`)
@@ -89,6 +90,7 @@ The manifest stores `setup`, `apps`, `npm`, `repos`, and `hooks` as arrays becau
 |-------|----------|---------|-------|
 | `version` | ✅ | — | Must be `1`. |
 | `reposPath` | | `~/repos` | Where tool repos are cloned. Tilde expansion supported. |
+| `vcs` | | `git` | Fleet-wide version control backend for repos and marshal self-update: `git` or `sd` (soda). Each repo may override with its own `vcs`. Declared explicitly; never auto-detected. |
 | `profiles` | | `[]` | Declared profile names. Any item-level profile must appear here. |
 | `apps` | | `[]` | Winget packages installed before any repos. |
 | `npm` | | `[]` | npm global packages installed after apps, before repos. |
@@ -129,6 +131,7 @@ The manifest stores `setup`, `apps`, `npm`, `repos`, and `hooks` as arrays becau
 |-------|----------|-------|
 | `name` | ✅ | Kebab-case unique identifier. Becomes the folder name under `reposPath`. |
 | `url` | ✅ | Clonable URL (any form `git clone` accepts). |
+| `vcs` | | Version control backend for this repo: `git` or `sd` (soda). Overrides the top-level `vcs`. Absent = inherit the top-level `vcs` (else `git`). |
 | `platforms` | | Same as apps. |
 | `profiles` | | Same as apps. |
 | `install_cwd` | | Subdirectory inside the cloned repo where `install_cmd` and `update_cmd` run. Defaults to the repo root. Use this for monorepos (for example, when the CLI lives under `cli/`). |
@@ -221,6 +224,21 @@ For each repo applicable to the current platform, marshal picks one action:
 - If an existing repo without `update_cmd` reports `Already up to date.` from `git pull --ff-only`, marshal skips the follow-up install/build command.
 - `marshal status` shows applicable-but-not-yet-provisioned repos as `missing` so the next action is obvious.
 
+### Version control backend
+
+Every repo operation and marshal's own self-update route through an explicitly declared version control backend. Marshal never auto-detects the backend from the working tree.
+
+- `git` (default) drives `git clone`, `git pull --ff-only`, `git add` / `git commit`, and `git push`.
+- `sd` (soda) drives soda's changelist workflow instead. soda is not a git drop-in: it submits changelists rather than committing, and reports its own no-change signal.
+
+Resolution precedence:
+
+- **Per repo:** the repo's own `vcs`, else the top-level `vcs`, else `git`.
+- **marshal self-update:** the top-level `vcs` of the bound dotfiles `marshal.json`, else `git`.
+- **The dotfiles repo itself** (the pulls and commits `marshal add` / `marshal profile` make to `marshal.json`): the `vcs` declared in the `~/.marshal.json` binding, else `git`.
+
+A fleet can mix backends: declare a fleet-wide `vcs` and override individual repos as needed.
+
 ### Platform filtering
 
 Apps and repos with no `platforms` field apply to every platform. With one or more platforms listed, the row applies only when the current platform is in the list. Marshal is Windows-first today; the schema accepts `darwin` and `linux` for forward compatibility. npm packages follow the same `platforms` rule but, unlike apps, run on every platform by default.
@@ -235,6 +253,7 @@ Per-machine global config. One file, one source of truth — no env vars, no wal
 {
   "version": 1,
   "dotfilesRepo": "C:/Users/you/repos/dotfiles",
+  "vcs": "git",
   "profile": "work-laptop"
 }
 ```
@@ -259,6 +278,8 @@ marshal profile remove work-laptop
 ```
 
 The binding refuses to point at a directory that doesn't contain a `marshal.json`, so you can't accidentally bind to a non-marshal repo.
+
+`vcs` is optional and defaults to `git`. It declares the version control backend for the dotfiles repo itself: the pulls and commits marshal makes to `marshal.json` during `marshal add` and `marshal profile`, plus marshal's self-update. Set it to `sd` when the dotfiles repo is a soda repo.
 
 `profile` is optional for legacy manifests. Once the manifest contains profile-scoped items, set it with `marshal profile set <name>` before syncing. Re-binding preserves the existing local profile; sync re-validates it against the newly bound manifest. Use `profile add` and `profile remove` for the shared manifest's declared profiles. Use `profile scope <app|npm|setup|repo|hook> <profile> <items...>` and `profile unscope <app|npm|setup|repo|hook> <profile> <items...>` to update one or more existing item scopes.
 

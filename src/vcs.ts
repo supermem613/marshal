@@ -1,4 +1,5 @@
 import type { MarshalContext } from "./context.js";
+import { z } from "zod";
 
 // Every VCS-touching operation in marshal routes through a VcsBackend. The VCS
 // for each context is an explicitly declared choice, never auto-detected.
@@ -10,6 +11,9 @@ import type { MarshalContext } from "./context.js";
 export type Vcs = "git" | "sd";
 
 export const VCS_VALUES = ["git", "sd"] as const;
+
+// Zod enum for validating a declared vcs value in manifest and binding schemas.
+export const VcsSchema = z.enum(VCS_VALUES);
 
 export const DEFAULT_VCS: Vcs = "git";
 

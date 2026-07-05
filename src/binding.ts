@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { z } from "zod";
 import { MANIFEST_FILENAME } from "./manifest.js";
+import { VcsSchema } from "./vcs.js";
 
 // `~/.marshal.json` — per-machine global config. Holds the absolute path of
 // the dotfiles repo this machine is bound to. Single source of truth: no
@@ -13,6 +14,7 @@ export const BINDING_FILENAME = ".marshal.json";
 export const BindingSchema = z.object({
   version: z.literal(1),
   dotfilesRepo: z.string().min(1),
+  vcs: VcsSchema.optional(),
   profile: z.string().regex(/^[a-z0-9][a-z0-9-]*$/i, "profile must be alphanumeric/hyphen").optional(),
 });
 

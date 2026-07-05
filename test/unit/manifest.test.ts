@@ -248,3 +248,33 @@ test("readManifest: returns parsed manifest with defaults", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("ManifestSchema: accepts per-repo and marshal-level vcs", () => {
+  const r = ManifestSchema.safeParse({
+    version: 1,
+    vcs: "sd",
+    repos: [{ name: "tool-a", url: "https://x/a.git", vcs: "git" }],
+  });
+  assert.ok(r.success, JSON.stringify(r));
+  if (r.success) {
+    assert.equal(r.data.vcs, "sd");
+    assert.equal(r.data.repos[0].vcs, "git");
+  }
+});
+
+test("ManifestSchema: vcs is optional and left undefined when absent", () => {
+  const r = ManifestSchema.safeParse({
+    version: 1,
+    repos: [{ name: "tool-a", url: "https://x/a.git" }],
+  });
+  assert.ok(r.success, JSON.stringify(r));
+  if (r.success) {
+    assert.equal(r.data.vcs, undefined);
+    assert.equal(r.data.repos[0].vcs, undefined);
+  }
+});
+
+test("ManifestSchema: rejects an unknown vcs value", () => {
+  const r = ManifestSchema.safeParse({ version: 1, vcs: "hg" });
+  assert.equal(r.success, false);
+});

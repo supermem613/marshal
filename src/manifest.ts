@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { isAbsolute, join, normalize } from "node:path";
 import { z } from "zod";
 import { SUPPORTED_PLATFORMS } from "./platform.js";
+import { VcsSchema } from "./vcs.js";
 
 // `marshal.json` lives at the root of the dotfiles repo (sibling to
 // `rotunda.json`). It is the single source of truth for what tools and apps
@@ -57,6 +58,9 @@ export const ManifestFieldDocs = {
     },
     url: {
       description: "Clonable URL accepted by git clone.",
+    },
+    vcs: {
+      description: "Version control backend for this repo: git or sd (soda). Absent inherits the marshal-level vcs.",
     },
     platforms: {
       description: "Array of platform names. Absent means all platforms.",
@@ -179,6 +183,7 @@ const NpmSchema = z.object({
 const RepoSchema = z.object({
   name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/i, "repo.name must be alphanumeric/hyphen").describe(ManifestFieldDocs.repo.name.description),
   url: z.string().min(1, "repo.url required").describe(ManifestFieldDocs.repo.url.description),
+  vcs: VcsSchema.optional().describe(ManifestFieldDocs.repo.vcs.description),
   platforms: z.array(PlatformSchema).optional().describe(ManifestFieldDocs.repo.platforms.description),
   profiles: z.array(ProfileNameSchema).optional().describe(ManifestFieldDocs.repo.profiles.description),
   install_cwd: z.string().optional().describe(ManifestFieldDocs.repo.install_cwd.description),
@@ -207,6 +212,7 @@ const SetupSchema = z.object({
 
 export const ManifestSchema = z.object({
   version: z.literal(1),
+  vcs: VcsSchema.optional().describe("Marshal-level version control backend used for self-update and as the default for repos that omit vcs."),
   reposPath: z.string().optional(),
   profiles: z.array(ProfileNameSchema).default([]),
   apps: z.array(AppSchema).default([]),

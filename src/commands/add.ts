@@ -17,7 +17,7 @@ import {
 } from "../manifest.js";
 import { syncCommand } from "./sync.js";
 import { Platform, SUPPORTED_PLATFORMS } from "../platform.js";
-import { pullDotfilesRepo } from "../dotfiles-git.js";
+import { pullDotfilesRepo, dotfilesVcs } from "../dotfiles-git.js";
 
 export interface AddOptions {
   install_cmd?: string;
@@ -654,15 +654,16 @@ function isValidHookCwd(cwd: string): boolean {
 // Commit and push marshal.json changes in the bound dotfiles repo.
 // Best-effort: logs warnings on failure but does not fail the command.
 export async function commitAndPush(ctx: MarshalContext, dotfilesRepo: string, message: string): Promise<void> {
+  const vcs = dotfilesVcs(ctx);
   try {
-    await ctx.backendFor("git").commitFile(ctx, dotfilesRepo, MANIFEST_FILENAME, message);
+    await ctx.backendFor(vcs).commitFile(ctx, dotfilesRepo, MANIFEST_FILENAME, message);
   } catch (err) {
     const detail = err instanceof ProcessError ? err.result.stderr || err.result.stdout : (err as Error).message;
     ctx.log.warn(`Failed to commit ${MANIFEST_FILENAME}: ${detail.trim().split("\n")[0]}`);
     return;
   }
   try {
-    await ctx.backendFor("git").push(ctx, dotfilesRepo);
+    await ctx.backendFor(vcs).push(ctx, dotfilesRepo);
     ctx.log.success(`Committed and pushed ${MANIFEST_FILENAME}`);
   } catch (err) {
     const detail = err instanceof ProcessError ? err.result.stderr || err.result.stdout : (err as Error).message;

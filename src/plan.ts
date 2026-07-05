@@ -4,6 +4,7 @@ import { Manifest, Repo, App, Npm, Hook, Setup } from "./manifest.js";
 import { Platform, appliesToPlatform } from "./platform.js";
 import { resolvePath, expandHome, DEFAULT_REPOS_PATH } from "./paths.js";
 import { ActiveProfile, profileApplies } from "./profile.js";
+import { Vcs, DEFAULT_VCS } from "./vcs.js";
 
 // "Plan, then apply" is marshal's safety contract. buildPlan is a pure
 // function: read filesystem state once, return a complete description of
@@ -26,6 +27,7 @@ export interface RepoStep {
   updateCmd: string | null;
   action: RepoAction;
   exists: boolean;
+  vcs: Vcs;
 }
 
 export interface AppStep {
@@ -126,6 +128,7 @@ export function buildPlan(manifest: Manifest, opts: BuildPlanOptions): Plan {
         updateCmd,
         action,
         exists,
+        vcs: r.vcs ?? manifest.vcs ?? DEFAULT_VCS,
       };
     });
 

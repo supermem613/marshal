@@ -36,6 +36,7 @@ test("renderPlan: lists apps + repos", () => {
         updateCmd: null,
         action: "clone-and-install",
         exists: false,
+        vcs: "git",
       },
     ],
     hooks: [{

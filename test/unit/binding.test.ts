@@ -161,6 +161,27 @@ test("requireBinding returns binding when set", () => {
   }
 });
 
+test("readBinding: preserves a declared vcs value", () => {
+  const f = fresh();
+  try {
+    writeFileSync(bindingPath(f.home), JSON.stringify({ version: 1, dotfilesRepo: "C:/df", vcs: "sd" }));
+    const b = readBinding(f.home);
+    assert.equal(b?.vcs, "sd");
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("readBinding: rejects an unknown vcs value", () => {
+  const f = fresh();
+  try {
+    writeFileSync(bindingPath(f.home), JSON.stringify({ version: 1, dotfilesRepo: "C:/df", vcs: "hg" }));
+    assert.throws(() => readBinding(f.home), BindingError);
+  } finally {
+    f.cleanup();
+  }
+});
+
 // Sanity guard so eslint doesn't flag mkdirSync as unused (it's intentionally
 // imported for future tests that need to construct partially-formed repos).
 void mkdirSync;
