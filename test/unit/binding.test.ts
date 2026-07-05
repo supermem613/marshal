@@ -7,6 +7,7 @@ import {
   bindingPath,
   readBinding,
   writeBinding,
+  writeBindingProfile,
   clearBinding,
   requireBinding,
   BindingError,
@@ -179,6 +180,63 @@ test("readBinding: rejects an unknown vcs value", () => {
     assert.throws(() => readBinding(f.home), BindingError);
   } finally {
     f.cleanup();
+  }
+});
+
+test("writeBinding sets vcs when provided and roundtrips", () => {
+  const { home, cleanup } = fresh();
+  const df = makeDotfiles();
+  try {
+    const w = writeBinding(df.dir, home, "sd");
+    assert.equal(w.vcs, "sd");
+    const r = readBinding(home);
+    assert.equal(r?.vcs, "sd");
+  } finally {
+    cleanup();
+    df.cleanup();
+  }
+});
+
+test("writeBinding preserves an existing vcs when none is provided", () => {
+  const { home, cleanup } = fresh();
+  const df1 = makeDotfiles();
+  const df2 = makeDotfiles();
+  try {
+    writeFileSync(bindingPath(home), JSON.stringify({ version: 1, dotfilesRepo: df1.dir, vcs: "sd" }));
+    const w = writeBinding(df2.dir, home);
+    assert.equal(w.dotfilesRepo, df2.dir);
+    assert.equal(w.vcs, "sd");
+  } finally {
+    cleanup();
+    df1.cleanup();
+    df2.cleanup();
+  }
+});
+
+test("writeBinding overrides an existing vcs when a new one is provided", () => {
+  const { home, cleanup } = fresh();
+  const df = makeDotfiles();
+  try {
+    writeFileSync(bindingPath(home), JSON.stringify({ version: 1, dotfilesRepo: df.dir, vcs: "sd" }));
+    const w = writeBinding(df.dir, home, "git");
+    assert.equal(w.vcs, "git");
+  } finally {
+    cleanup();
+    df.cleanup();
+  }
+});
+
+test("writeBindingProfile preserves an existing vcs", () => {
+  const { home, cleanup } = fresh();
+  const df = makeDotfiles();
+  try {
+    writeBinding(df.dir, home, "sd");
+    const w = writeBindingProfile("work", home);
+    assert.equal(w.profile, "work");
+    assert.equal(w.vcs, "sd");
+  } finally {
+    cleanup();
+    df.cleanup();
   }
 });
 

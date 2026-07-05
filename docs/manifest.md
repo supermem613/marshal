@@ -262,6 +262,7 @@ Manage with:
 
 ```pwsh
 marshal bind <url-or-path>     # set / re-bind
+marshal bind <url-or-path> --vcs sd   # set / re-bind and declare the dotfiles backend
 marshal bind --show            # print current binding
 marshal bind --unset           # forget binding
 marshal where                  # print just the path (one line, scriptable)
@@ -279,7 +280,7 @@ marshal profile remove work-laptop
 
 The binding refuses to point at a directory that doesn't contain a `marshal.json`, so you can't accidentally bind to a non-marshal repo.
 
-`vcs` is optional and defaults to `git`. It declares the version control backend for the dotfiles repo itself: the pulls and commits marshal makes to `marshal.json` during `marshal add` and `marshal profile`, plus marshal's self-update. Set it to `sd` when the dotfiles repo is a soda repo.
+`vcs` is optional and defaults to `git`. It declares the version control backend for the dotfiles repo itself: the pulls and commits marshal makes to `marshal.json` during `marshal add` and `marshal profile`, plus marshal's self-update. Set it to `sd` when the dotfiles repo is a soda repo. Declare it durably with `marshal bind <url-or-path> --vcs sd`, which also routes the initial clone through that backend. Re-binding and profile changes preserve the declared `vcs`; omit `--vcs` to keep the current value.
 
 `profile` is optional for legacy manifests. Once the manifest contains profile-scoped items, set it with `marshal profile set <name>` before syncing. Re-binding preserves the existing local profile; sync re-validates it against the newly bound manifest. Use `profile add` and `profile remove` for the shared manifest's declared profiles. Use `profile scope <app|npm|setup|repo|hook> <profile> <items...>` and `profile unscope <app|npm|setup|repo|hook> <profile> <items...>` to update one or more existing item scopes.
 
