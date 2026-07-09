@@ -455,3 +455,22 @@ test("sync: repo failure skips hooks", async () => {
     df.cleanup();
   }
 });
+
+test("sync: sd-powered dotfiles repo (manifest vcs, no binding vcs) pulls with sd not git", async () => {
+  // Regression: the ~/.marshal.json binding omits vcs, but the dotfiles
+  // marshal.json declares top-level vcs "soda". The dotfiles repo pull must
+  // honor that declaration and run `sd pull`, not raw `git pull --ff-only`,
+  // which sd blocks with its git reference-transaction hook.
+  const df = makeDotfilesRepo({ version: 1, vcs: "soda", apps: [], repos: [] });
+  const t = makeContext({ preBoundTo: df.dir });
+  try {
+    const code = await syncCommand(t.ctx, { yes: true });
+    assert.equal(code, 0);
+    assert.equal(t.runner.calls.length, 1);
+    assert.equal(t.runner.calls[0].command, "sd pull");
+    assert.equal(t.runner.calls[0].opts.cwd, df.dir);
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
