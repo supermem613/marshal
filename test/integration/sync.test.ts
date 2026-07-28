@@ -154,8 +154,10 @@ test("sync: clones missing repo and runs install_cmd", async () => {
     repos: [{ name: "tool-alpha", url: "https://x/tool-alpha.git", install_cmd: "npm install" }],
   });
   const t = makeContext({ preBoundTo: df.dir });
-  // Configure mock runner to "succeed" for git clone + npm install.
-  t.runner.respond("git clone", { code: 0 });
+  const targetDir = join(t.homeDir, "repos", "tool-alpha");
+  // A real clone creates its target directory; the mock must too, so the
+  // install_cwd check sees the same filesystem state as a live run.
+  t.runner.respond("git clone", { code: 0, effect: () => mkdirSync(targetDir, { recursive: true }) });
   t.runner.respond("npm install", { code: 0 });
   try {
     const code = await syncCommand(t.ctx, { yes: true });
@@ -166,7 +168,7 @@ test("sync: clones missing repo and runs install_cmd", async () => {
     assert.match(t.runner.calls[1].command, /^git clone https:\/\/x\/tool-alpha\.git/);
     assert.equal(t.runner.calls[2].command, "npm install");
     // install_cmd runs in the cloned repo's targetDir.
-    assert.equal(t.runner.calls[2].opts.cwd, join(t.homeDir, "repos", "tool-alpha"));
+    assert.equal(t.runner.calls[2].opts.cwd, targetDir);
   } finally {
     t.cleanup();
     df.cleanup();

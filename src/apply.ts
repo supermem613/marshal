@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { MarshalContext } from "./context.js";
 import { Plan, RepoStep, AppStep, NpmStep, HookStep, SetupStep } from "./plan.js";
@@ -236,6 +236,7 @@ async function provisionRepo(ctx: MarshalContext, repo: RepoStep): Promise<Execu
       mkdirSync(dirname(repo.targetDir), { recursive: true });
       ctx.log.info(`→ git clone ${repo.url} ${repo.targetDir}`);
       await ctx.backendFor(repo.vcs).clone(ctx, repo.url, repo.targetDir);
+      requireInstallCwd(repo);
       ctx.log.info(`→ (${repo.installCwd}) ${repo.installCmd}`);
       await ctx.runner.exec(repo.installCmd as string, { cwd: repo.installCwd, inherit: false });
       return { step: `repo: ${repo.name}`, ok: true, detail: "cloned + installed" };
@@ -247,6 +248,7 @@ async function provisionRepo(ctx: MarshalContext, repo: RepoStep): Promise<Execu
       return { step: `repo: ${repo.name}`, ok: true, detail: "cloned" };
     }
     if (repo.action === "update") {
+      requireInstallCwd(repo);
       ctx.log.info(`→ (${repo.installCwd}) ${repo.updateCmd}`);
       await ctx.runner.exec(repo.updateCmd as string, { cwd: repo.installCwd, inherit: false });
       return { step: `repo: ${repo.name}`, ok: true, detail: "updated" };
@@ -260,6 +262,8 @@ async function provisionRepo(ctx: MarshalContext, repo: RepoStep): Promise<Execu
     if (!repo.installCmd) {
       return { step: `repo: ${repo.name}`, ok: true, detail: "pulled" };
     }
+    // Checked after the pull, since the pull can be what creates install_cwd.
+    requireInstallCwd(repo);
     ctx.log.info(`→ (${repo.installCwd}) ${repo.installCmd}`);
     await ctx.runner.exec(repo.installCmd, { cwd: repo.installCwd, inherit: false });
     return { step: `repo: ${repo.name}`, ok: true, detail: "pulled + reinstalled" };
@@ -269,6 +273,21 @@ async function provisionRepo(ctx: MarshalContext, repo: RepoStep): Promise<Execu
       : (err as Error).message;
     return { step: `repo: ${repo.name}`, ok: false, detail: msg };
   }
+}
+
+// Spawning with a cwd that does not exist reports ENOENT against the shell
+// binary, not against the directory. On Windows that surfaces as
+// "spawn C:\WINDOWS\system32\cmd.exe ENOENT", which sends readers hunting for a
+// missing cmd.exe. Fail here instead so the message names install_cwd.
+function requireInstallCwd(repo: RepoStep): void {
+  if (existsSync(repo.installCwd)) {
+    return;
+  }
+  throw new Error(
+    `install_cwd does not exist: ${repo.installCwd}. ` +
+    `Check the "install_cwd" field of repo "${repo.name}" in marshal.json. ` +
+    `It must be a subdirectory inside the repo, not a command.`,
+  );
 }
 
 function escapeRegExp(value: string): string {

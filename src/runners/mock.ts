@@ -16,6 +16,10 @@ export interface MockResponse {
   stderr?: string;
   // If set, exec() throws ProcessError with this result.
   fail?: boolean;
+  // Side effect to run when this response matches. Lets a test model what the
+  // real command does to the filesystem, such as a clone creating its target
+  // directory, so code that inspects the filesystem behaves as it would live.
+  effect?: () => void;
 }
 
 interface Matcher {
@@ -44,6 +48,7 @@ export class MockProcessRunner implements ProcessRunner {
       typeof m.pattern === "string" ? command.startsWith(m.pattern) : m.pattern.test(command),
     );
     const response = matched?.response ?? this.defaultResponse;
+    response.effect?.();
     const result: ExecResult = {
       command,
       cwd: opts.cwd ?? process.cwd(),

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { join } from "node:path";
-import { makeContext } from "../helpers.js";
+import { makeContext, stubInstalledRepo } from "../helpers.js";
 import { applyPlan } from "../../src/apply.js";
 import { Plan } from "../../src/plan.js";
 
@@ -542,6 +542,142 @@ test("applyPlan: skipSetup bypasses setup steps", async () => {
     const results = await applyPlan(t.ctx, plan, { skipSetup: true });
     assert.equal(results.length, 0);
     assert.equal(t.runner.calls.length, 0);
+  } finally {
+    t.cleanup();
+  }
+});
+
+// --- install_cwd validation ---
+
+// A manifest that puts a command string in `install_cwd` yields an installCwd
+// that does not exist. Spawning with a missing cwd surfaces on Windows as
+// `spawn cmd.exe ENOENT`, which names the shell rather than the bad directory.
+// These guards prove the failure is reported against install_cwd instead.
+
+test("applyPlan: update repo with a missing install_cwd reports the bad directory", async () => {
+  const t = makeContext({ platform: "win32" });
+  try {
+    const reposPath = join(t.homeDir, "repos");
+    const targetDir = stubInstalledRepo(reposPath, "uatu");
+    const badCwd = join(targetDir, "npm install && npm run build");
+    const plan: Plan = {
+      apps: [],
+      npm: [],
+      hooks: [],
+      setup: [],
+      repos: [
+        {
+          name: "uatu",
+          url: "https://x/uatu.git",
+          targetDir,
+          installCwd: badCwd,
+          installCmd: null,
+          updateCmd: "uatu update",
+          action: "update",
+          exists: true,
+          vcs: "soda",
+        },
+      ],
+      reposPath,
+      platform: "win32",
+      activeProfile: { profile: null, source: "none" },
+    };
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes("install_cwd"),
+      `detail should name install_cwd, got: ${results[0].detail}`,
+    );
+    assert.ok(
+      results[0].detail?.includes(badCwd),
+      `detail should name the missing directory, got: ${results[0].detail}`,
+    );
+    assert.equal(t.runner.calls.length, 0);
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: pull-and-install repo with a missing install_cwd reports the bad directory", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond(/^sd pull/, { code: 0, stdout: "Updated 1 file" });
+  try {
+    const reposPath = join(t.homeDir, "repos");
+    const targetDir = stubInstalledRepo(reposPath, "uatu");
+    const badCwd = join(targetDir, "packages/missing");
+    const plan: Plan = {
+      apps: [],
+      npm: [],
+      hooks: [],
+      setup: [],
+      repos: [
+        {
+          name: "uatu",
+          url: "https://x/uatu.git",
+          targetDir,
+          installCwd: badCwd,
+          installCmd: "npm install",
+          updateCmd: null,
+          action: "pull-and-install",
+          exists: true,
+          vcs: "soda",
+        },
+      ],
+      reposPath,
+      platform: "win32",
+      activeProfile: { profile: null, source: "none" },
+    };
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes(badCwd),
+      `detail should name the missing directory, got: ${results[0].detail}`,
+    );
+    assert.equal(
+      t.runner.calls.filter((c) => c.command.includes("npm install")).length,
+      0,
+      "install_cmd must not run against a missing cwd",
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: update repo with an existing install_cwd runs the update command", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond(/^uatu update/, { code: 0 });
+  try {
+    const reposPath = join(t.homeDir, "repos");
+    const targetDir = stubInstalledRepo(reposPath, "uatu");
+    const plan: Plan = {
+      apps: [],
+      npm: [],
+      hooks: [],
+      setup: [],
+      repos: [
+        {
+          name: "uatu",
+          url: "https://x/uatu.git",
+          targetDir,
+          installCwd: targetDir,
+          installCmd: null,
+          updateCmd: "uatu update",
+          action: "update",
+          exists: true,
+          vcs: "soda",
+        },
+      ],
+      reposPath,
+      platform: "win32",
+      activeProfile: { profile: null, source: "none" },
+    };
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].ok, true, JSON.stringify(results));
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["uatu update"]);
+    assert.equal(t.runner.calls[0].opts.cwd, targetDir);
   } finally {
     t.cleanup();
   }

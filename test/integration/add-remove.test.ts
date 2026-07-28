@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { makeContext, makeDotfilesRepo, stubInstalledRepo } from "../helpers.js";
 import { addAppCommand, addCommand, addHookCommand, addNpmCommand, removeCommand, removeItemsCommand } from "../../src/commands/add.js";
@@ -103,7 +103,10 @@ test("add: stops before writing when dotfiles pull fails", async () => {
 test("add --sync: writes manifest and syncs just the new repo", async () => {
   const df = makeDotfilesRepo({ version: 1, apps: [], repos: [] });
   const t = makeContext({ preBoundTo: df.dir });
-  t.runner.respond("git clone", { code: 0 });
+  const installCwd = join(t.homeDir, "repos", "foo", "subdir");
+  // A real clone brings down the declared install_cwd subdirectory; the mock
+  // must create it too, or the clone leaves nothing on disk to run in.
+  t.runner.respond("git clone", { code: 0, effect: () => mkdirSync(installCwd, { recursive: true }) });
   t.runner.respond("make", { code: 0 });
   try {
     const code = await addCommand(
