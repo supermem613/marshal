@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { makeContext, makeDotfilesRepo, stubInstalledRepo } from "../helpers.js";
 import { syncCommand } from "../../src/commands/sync.js";
@@ -21,6 +21,21 @@ test("sync: errors with bad manifest", async () => {
   try {
     const code = await syncCommand(t.ctx, { yes: true });
     assert.equal(code, 1);
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("sync: malformed manifest JSON reports the parse error and pulls nothing", async () => {
+  const df = makeDotfilesRepo({ version: 1, vcs: "soda", repos: [] });
+  writeFileSync(join(df.dir, "marshal.json"), "{ \"version\": 1 \"vcs\": \"soda\" }", "utf8");
+  const t = makeContext({ preBoundTo: df.dir });
+  try {
+    const code = await syncCommand(t.ctx, { yes: true });
+    assert.equal(code, 1);
+    assert.ok(t.log.captured.some((l) => l.includes("Invalid JSON in")));
+    assert.equal(t.runner.calls.length, 0);
   } finally {
     t.cleanup();
     df.cleanup();

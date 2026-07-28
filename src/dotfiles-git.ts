@@ -1,7 +1,7 @@
 import { MarshalContext } from "./context.js";
 import { ProcessError } from "./runners/types.js";
 import { readBinding } from "./binding.js";
-import { readManifest } from "./manifest.js";
+import { readManifest, ManifestError } from "./manifest.js";
 import { Vcs, DEFAULT_VCS } from "./vcs.js";
 
 // The dotfiles repo's vcs is a marshal-scope declaration resolved the same way
@@ -11,9 +11,9 @@ import { Vcs, DEFAULT_VCS } from "./vcs.js";
 // bound without that flag must still honor the vcs its own manifest declares
 // rather than silently pulling with git. A raw git pull against an sd-powered
 // repo trips sd's reference-transaction hook and aborts the sync.
-// A broken manifest is not swallowed here: syncCommand reads the manifest right
-// after the pull and reports the ManifestError loudly, so falling back to the
-// default backend for backend selection alone is safe.
+// A broken manifest must not degrade to the default backend: the fallback would
+// pick git for an sd repo and the resulting pull failure would mask the real
+// cause. ManifestError therefore propagates to the caller, which reports it.
 export function dotfilesVcs(ctx: MarshalContext): Vcs {
   const binding = readBinding(ctx.homeDir);
   if (!binding) {
@@ -22,15 +22,20 @@ export function dotfilesVcs(ctx: MarshalContext): Vcs {
   if (binding.vcs) {
     return binding.vcs;
   }
-  try {
-    return readManifest(binding.dotfilesRepo).vcs ?? DEFAULT_VCS;
-  } catch {
-    return DEFAULT_VCS;
-  }
+  return readManifest(binding.dotfilesRepo).vcs ?? DEFAULT_VCS;
 }
 
 export async function pullDotfilesRepo(ctx: MarshalContext, dotfilesRepo: string): Promise<boolean> {
-  const backend = ctx.backendFor(dotfilesVcs(ctx));
+  let backend;
+  try {
+    backend = ctx.backendFor(dotfilesVcs(ctx));
+  } catch (err) {
+    if (err instanceof ManifestError) {
+      ctx.log.error(err.message);
+      return false;
+    }
+    throw err;
+  }
   ctx.log.info(`→ (${dotfilesRepo}) ${backend.bin} pull`);
   try {
     await backend.pull(ctx, dotfilesRepo);
