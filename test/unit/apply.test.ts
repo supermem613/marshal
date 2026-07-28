@@ -682,3 +682,138 @@ test("applyPlan: update repo with an existing install_cwd runs the update comman
     t.cleanup();
   }
 });
+
+// --- failed repo commands report their output ---
+
+// The command's own stderr or stdout is the only explanation a user gets for a
+// failed repo step. These guards prove that explanation reaches the result
+// instead of being reduced to the exit code.
+
+function failingUpdatePlan(t: ReturnType<typeof makeContext>, response: { stdout?: string; stderr?: string }): Plan {
+  const reposPath = join(t.homeDir, "repos");
+  const targetDir = stubInstalledRepo(reposPath, "forge");
+  t.runner.respond("forge update", { fail: true, code: 1, ...response });
+  return {
+    apps: [],
+    npm: [],
+    hooks: [],
+    setup: [],
+    repos: [
+      {
+        name: "forge",
+        url: "https://x/forge.git",
+        targetDir,
+        installCwd: targetDir,
+        installCmd: null,
+        updateCmd: "forge update",
+        action: "update",
+        exists: true,
+        vcs: "soda",
+      },
+    ],
+    reposPath,
+    platform: "win32",
+    activeProfile: { profile: null, source: "none" },
+  };
+}
+
+test("applyPlan: failed repo command reports the stderr that explains the failure", async () => {
+  const t = makeContext({ platform: "win32" });
+  try {
+    const plan = failingUpdatePlan(t, {
+      stderr: [
+        "soda: raw git commit blocked in this sd-powered repo",
+        'Use "sd submit" instead.',
+        "fatal: in 'preparing' phase, update aborted by the reference-transaction hook",
+      ].join("\n"),
+    });
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes("raw git commit blocked"),
+      `detail should carry the stderr explanation, got: ${results[0].detail}`,
+    );
+    assert.ok(
+      results[0].detail?.includes("reference-transaction hook"),
+      `detail should keep later stderr lines, got: ${results[0].detail}`,
+    );
+    assert.ok(
+      results[0].detail?.includes("forge update"),
+      `detail should still name the command, got: ${results[0].detail}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: failed repo command reports stdout when stderr is empty", async () => {
+  const t = makeContext({ platform: "win32" });
+  try {
+    // Tools that emit a JSON result envelope put the diagnosis on stdout and
+    // leave stderr empty, several lines into the payload.
+    const plan = failingUpdatePlan(t, {
+      stdout: [
+        "{",
+        '  "ok": false,',
+        '  "command": "update.run",',
+        '  "data": null,',
+        '  "error": {',
+        '    "code": "GIT_PULL_FAILED",',
+        '    "message": "soda: raw git commit blocked in this sd-powered repo"',
+        "  }",
+        "}",
+      ].join("\n"),
+      stderr: "",
+    });
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes("GIT_PULL_FAILED"),
+      `detail should reach the error code inside the envelope, got: ${results[0].detail}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: failed repo command truncates very long output", async () => {
+  const t = makeContext({ platform: "win32" });
+  try {
+    const plan = failingUpdatePlan(t, { stderr: `first line of the failure\n${"x".repeat(20000)}` });
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes("first line of the failure"),
+      `detail should keep the start of the output, got: ${results[0].detail?.slice(0, 200)}`,
+    );
+    assert.ok(
+      (results[0].detail?.length ?? 0) < 1200,
+      `detail should stay bounded, got ${results[0].detail?.length} chars`,
+    );
+    assert.ok(
+      results[0].detail?.includes("truncated"),
+      "detail should say the output was truncated",
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: failed repo command with no output still reports command and exit code", async () => {
+  const t = makeContext({ platform: "win32" });
+  try {
+    const plan = failingUpdatePlan(t, { stdout: "", stderr: "" });
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes("forge update"),
+      `detail should name the command, got: ${results[0].detail}`,
+    );
+    assert.ok(
+      results[0].detail?.includes("1"),
+      `detail should name the exit code, got: ${results[0].detail}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});

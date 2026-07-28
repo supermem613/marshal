@@ -269,10 +269,28 @@ async function provisionRepo(ctx: MarshalContext, repo: RepoStep): Promise<Execu
     return { step: `repo: ${repo.name}`, ok: true, detail: "pulled + reinstalled" };
   } catch (err) {
     const msg = err instanceof ProcessError
-      ? `${err.message.split("\n")[0]}`
+      ? describeProcessFailure(err)
       : (err as Error).message;
     return { step: `repo: ${repo.name}`, ok: false, detail: msg };
   }
+}
+
+// A failed command's own output is the only explanation the user gets. Reducing
+// it to an exit code turns an actionable error into a dead end. The budget is
+// wide enough to carry a tool's whole error envelope and narrow enough that a
+// failing build cannot bury the results summary.
+const FAILURE_OUTPUT_BUDGET = 600;
+
+function describeProcessFailure(err: ProcessError): string {
+  const header = `Command failed (exit ${err.result.code}): ${err.result.command}`;
+  const output = (err.result.stderr || err.result.stdout).trim();
+  if (!output) {
+    return header;
+  }
+  const excerpt = output.slice(0, FAILURE_OUTPUT_BUDGET).trimEnd();
+  const indented = excerpt.split("\n").map((line) => `    ${line}`).join("\n");
+  const suffix = output.length > FAILURE_OUTPUT_BUDGET ? "\n    ... output truncated" : "";
+  return `${header}\n${indented}${suffix}`;
 }
 
 // Spawning with a cwd that does not exist reports ENOENT against the shell
