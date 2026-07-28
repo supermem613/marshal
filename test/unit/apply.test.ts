@@ -817,3 +817,154 @@ test("applyPlan: failed repo command with no output still reports command and ex
     t.cleanup();
   }
 });
+
+// --- failed hooks and setup steps report their output ---
+
+test("applyPlan: failed hook reports the output that explains the failure", async () => {
+  const t = makeContext({ platform: "win32" });
+  // A tool that reports failures as a JSON envelope puts the diagnosis several
+  // lines in, so the opening brace explains nothing.
+  t.runner.respond("rotunda sync", {
+    fail: true,
+    code: 1,
+    stderr: ['{', '  "ok": false,', '  "error": {', '    "code": "SYNC_CONFLICT"', "  }", "}"].join("\n"),
+  });
+  try {
+    const plan: Plan = {
+      apps: [],
+      repos: [],
+      hooks: [{
+        name: "rotunda-sync",
+        stage: "post-repos",
+        command: "rotunda sync",
+        cwd: t.homeDir,
+        interactive: false,
+      }],
+      npm: [],
+      setup: [],
+      reposPath: join(t.homeDir, "repos"),
+      platform: "win32",
+      activeProfile: { profile: null, source: "none" },
+    };
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes("SYNC_CONFLICT"),
+      `detail should reach the error inside the envelope, got: ${results[0].detail}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: failed setup step reports the output that explains the failure", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond("bad-auth", {
+    fail: true,
+    code: 1,
+    stderr: ['{', '  "ok": false,', '  "error": {', '    "code": "AUTH_EXPIRED"', "  }", "}"].join("\n"),
+  });
+  try {
+    const plan: Plan = {
+      apps: [],
+      repos: [],
+      hooks: [],
+      npm: [],
+      setup: [{ name: "auth", command: "bad-auth", checkCmd: null, cwd: t.homeDir, interactive: false }],
+      reposPath: join(t.homeDir, "repos"),
+      platform: "win32",
+      activeProfile: { profile: null, source: "none" },
+    };
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes("AUTH_EXPIRED"),
+      `detail should reach the error inside the envelope, got: ${results[0].detail}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+// --- logged commands match the backend that runs them ---
+
+// The logged command is the user's record of what marshal did. Naming git while
+// the soda backend runs sd misreports the run and misdirects debugging.
+
+function pullOnlyPlan(t: ReturnType<typeof makeContext>, vcs: "git" | "soda"): Plan {
+  const reposPath = join(t.homeDir, "repos");
+  const targetDir = stubInstalledRepo(reposPath, "eidos");
+  return {
+    apps: [],
+    npm: [],
+    hooks: [],
+    setup: [],
+    repos: [{
+      name: "eidos",
+      url: "https://x/eidos.git",
+      targetDir,
+      installCwd: targetDir,
+      installCmd: null,
+      updateCmd: null,
+      action: "pull",
+      exists: true,
+      vcs,
+    }],
+    reposPath,
+    platform: "win32",
+    activeProfile: { profile: null, source: "none" },
+  };
+}
+
+test("applyPlan: pulling a soda repo logs the sd command it runs", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond("sd pull", { code: 0, stdout: "Updated 1 file" });
+  try {
+    const results = await applyPlan(t.ctx, pullOnlyPlan(t, "soda"));
+    assert.equal(results[0].ok, true, JSON.stringify(results));
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["sd pull"]);
+    const logged = t.log.captured.filter((l) => l.includes("→"));
+    assert.ok(
+      logged.some((l) => l.includes("sd pull")),
+      `log should name the sd command that ran, got: ${JSON.stringify(logged)}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: cloning a soda repo logs the sd command it runs", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond("sd clone", { code: 0 });
+  try {
+    const plan = pullOnlyPlan(t, "soda");
+    plan.repos[0].action = "clone";
+    plan.repos[0].exists = false;
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results[0].ok, true, JSON.stringify(results));
+    const logged = t.log.captured.filter((l) => l.includes("→"));
+    assert.ok(
+      logged.some((l) => l.includes("sd clone")),
+      `log should name the sd command that ran, got: ${JSON.stringify(logged)}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: pulling a git repo logs the git command it runs", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond("git pull", { code: 0, stdout: "Updating abc..def" });
+  try {
+    const results = await applyPlan(t.ctx, pullOnlyPlan(t, "git"));
+    assert.equal(results[0].ok, true, JSON.stringify(results));
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["git pull --ff-only"]);
+    const logged = t.log.captured.filter((l) => l.includes("→"));
+    assert.ok(
+      logged.some((l) => l.includes("git pull --ff-only")),
+      `log should name the git command that ran, got: ${JSON.stringify(logged)}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});

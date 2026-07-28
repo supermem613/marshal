@@ -200,9 +200,7 @@ async function runSetupStep(ctx: MarshalContext, step: SetupStep): Promise<Execu
     return { step: `setup: ${step.name}`, ok: true, detail };
   } catch (err) {
     if (err instanceof ProcessError) {
-      const output = (err.result.stderr || err.result.stdout).trim().split("\n")[0];
-      const detail = output || `command failed (exit ${err.result.code})`;
-      return { step: `setup: ${step.name}`, ok: false, detail };
+      return { step: `setup: ${step.name}`, ok: false, detail: describeProcessFailure(err) };
     }
     return { step: `setup: ${step.name}`, ok: false, detail: (err as Error).message };
   }
@@ -222,20 +220,19 @@ async function runHook(ctx: MarshalContext, hook: HookStep): Promise<ExecutionRe
     return { step: `hook: ${hook.name}`, ok: true, detail };
   } catch (err) {
     if (err instanceof ProcessError) {
-      const output = (err.result.stderr || err.result.stdout).trim().split("\n")[0];
-      const detail = output || `command failed (exit ${err.result.code})`;
-      return { step: `hook: ${hook.name}`, ok: false, detail };
+      return { step: `hook: ${hook.name}`, ok: false, detail: describeProcessFailure(err) };
     }
     return { step: `hook: ${hook.name}`, ok: false, detail: (err as Error).message };
   }
 }
 
 async function provisionRepo(ctx: MarshalContext, repo: RepoStep): Promise<ExecutionResult> {
+  const backend = ctx.backendFor(repo.vcs);
   try {
     if (repo.action === "clone-and-install") {
       mkdirSync(dirname(repo.targetDir), { recursive: true });
-      ctx.log.info(`→ git clone ${repo.url} ${repo.targetDir}`);
-      await ctx.backendFor(repo.vcs).clone(ctx, repo.url, repo.targetDir);
+      ctx.log.info(`→ ${backend.cloneCommand(repo.url, repo.targetDir)}`);
+      await backend.clone(ctx, repo.url, repo.targetDir);
       requireInstallCwd(repo);
       ctx.log.info(`→ (${repo.installCwd}) ${repo.installCmd}`);
       await ctx.runner.exec(repo.installCmd as string, { cwd: repo.installCwd, inherit: false });
@@ -243,8 +240,8 @@ async function provisionRepo(ctx: MarshalContext, repo: RepoStep): Promise<Execu
     }
     if (repo.action === "clone") {
       mkdirSync(dirname(repo.targetDir), { recursive: true });
-      ctx.log.info(`→ git clone ${repo.url} ${repo.targetDir}`);
-      await ctx.backendFor(repo.vcs).clone(ctx, repo.url, repo.targetDir);
+      ctx.log.info(`→ ${backend.cloneCommand(repo.url, repo.targetDir)}`);
+      await backend.clone(ctx, repo.url, repo.targetDir);
       return { step: `repo: ${repo.name}`, ok: true, detail: "cloned" };
     }
     if (repo.action === "update") {
@@ -254,8 +251,8 @@ async function provisionRepo(ctx: MarshalContext, repo: RepoStep): Promise<Execu
       return { step: `repo: ${repo.name}`, ok: true, detail: "updated" };
     }
     // pull-and-install or pull
-    ctx.log.info(`→ (${repo.targetDir}) git pull --ff-only`);
-    const pull = await ctx.backendFor(repo.vcs).pull(ctx, repo.targetDir);
+    ctx.log.info(`→ (${repo.targetDir}) ${backend.pullCommand}`);
+    const pull = await backend.pull(ctx, repo.targetDir);
     if (!pull.changed) {
       return { step: `repo: ${repo.name}`, ok: true, detail: "already up to date" };
     }

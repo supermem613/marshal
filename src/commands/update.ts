@@ -16,14 +16,14 @@ export async function updateCommand(ctx: MarshalContext): Promise<number> {
   }
   ctx.log.info(`Self-update in ${ctx.marshalSourceDir}`);
   const backend = ctx.backendFor(resolveMarshalVcs(ctx));
-  ctx.log.info(`→ ${backend.bin} pull`);
+  ctx.log.info(`→ ${backend.pullCommand}`);
   let pullChanged = true;
   try {
     const pull = await backend.pull(ctx, ctx.marshalSourceDir, { inherit: true });
     pullChanged = pull.changed;
   } catch (err) {
     const msg = err instanceof ProcessError ? err.message.split("\n")[0] : (err as Error).message;
-    ctx.log.error(`Failed: ${backend.bin} pull — ${msg}`);
+    ctx.log.error(`Failed: ${backend.pullCommand} — ${msg}`);
     return 1;
   }
   if (!pullChanged) {
