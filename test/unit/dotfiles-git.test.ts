@@ -4,6 +4,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { makeContext, makeDotfilesRepo } from "../helpers.js";
 import { dotfilesVcs } from "../../src/dotfiles-git.js";
+import { ManifestError } from "../../src/manifest.js";
 
 // dotfilesVcs is marshal-scope backend selection for the bound dotfiles repo.
 // Contract: explicit binding vcs override wins; otherwise the dotfiles
@@ -53,12 +54,12 @@ test("dotfilesVcs: falls back to git default when the manifest declares no vcs",
   }
 });
 
-test("dotfilesVcs: falls back to git default when the manifest cannot be read", () => {
+test("dotfilesVcs: propagates ManifestError when the manifest cannot be read", () => {
   const df = makeDotfilesRepo({ version: 999 });
   const t = makeContext();
   try {
     writeBindingFile(t.homeDir, df.dir);
-    assert.equal(dotfilesVcs(t.ctx), "git");
+    assert.throws(() => dotfilesVcs(t.ctx), ManifestError);
   } finally {
     t.cleanup();
     df.cleanup();

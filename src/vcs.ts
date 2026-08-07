@@ -28,6 +28,11 @@ export interface VcsBackend {
   // Executable this backend drives. doctor derives which binaries to verify
   // from the declared vcs values.
   readonly bin: string;
+  // The exact command each operation runs. Callers log these rather than
+  // composing their own label, so what a run reports cannot drift from what it
+  // executed. Any new operation must keep the two reading from one string.
+  readonly pullCommand: string;
+  cloneCommand(url: string, dir: string): string;
   clone(ctx: MarshalContext, url: string, dir: string): Promise<void>;
   pull(ctx: MarshalContext, dir: string, opts?: { inherit?: boolean }): Promise<PullResult>;
   commitFile(ctx: MarshalContext, dir: string, file: string, message: string): Promise<void>;
@@ -41,13 +46,18 @@ function gitPullMadeNoChanges(output: string): boolean {
 class GitBackend implements VcsBackend {
   readonly vcs = "git" as const;
   readonly bin = "git";
+  readonly pullCommand = "git pull --ff-only";
+
+  cloneCommand(url: string, dir: string): string {
+    return `git clone ${url} "${dir}"`;
+  }
 
   async clone(ctx: MarshalContext, url: string, dir: string): Promise<void> {
-    await ctx.runner.exec(`git clone ${url} "${dir}"`, { cwd: ctx.cwd, inherit: false });
+    await ctx.runner.exec(this.cloneCommand(url, dir), { cwd: ctx.cwd, inherit: false });
   }
 
   async pull(ctx: MarshalContext, dir: string, opts: { inherit?: boolean } = {}): Promise<PullResult> {
-    const result = await ctx.runner.exec("git pull --ff-only", {
+    const result = await ctx.runner.exec(this.pullCommand, {
       cwd: dir,
       inherit: opts.inherit ?? false,
     });
@@ -86,13 +96,18 @@ function sodaReportedUpToDate(stdout: string): boolean {
 class SodaBackend implements VcsBackend {
   readonly vcs = "soda" as const;
   readonly bin = "sd";
+  readonly pullCommand = "sd pull";
+
+  cloneCommand(url: string, dir: string): string {
+    return `sd clone ${url} "${dir}"`;
+  }
 
   async clone(ctx: MarshalContext, url: string, dir: string): Promise<void> {
-    await ctx.runner.exec(`sd clone ${url} "${dir}"`, { cwd: ctx.cwd, inherit: false });
+    await ctx.runner.exec(this.cloneCommand(url, dir), { cwd: ctx.cwd, inherit: false });
   }
 
   async pull(ctx: MarshalContext, dir: string, opts: { inherit?: boolean } = {}): Promise<PullResult> {
-    const result = await ctx.runner.exec("sd pull", {
+    const result = await ctx.runner.exec(this.pullCommand, {
       cwd: dir,
       inherit: opts.inherit ?? false,
     });

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { makeContext, makeDotfilesRepo, stubInstalledRepo } from "../helpers.js";
 import { syncCommand } from "../../src/commands/sync.js";
@@ -21,6 +21,21 @@ test("sync: errors with bad manifest", async () => {
   try {
     const code = await syncCommand(t.ctx, { yes: true });
     assert.equal(code, 1);
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("sync: malformed manifest JSON reports the parse error and pulls nothing", async () => {
+  const df = makeDotfilesRepo({ version: 1, vcs: "soda", repos: [] });
+  writeFileSync(join(df.dir, "marshal.json"), "{ \"version\": 1 \"vcs\": \"soda\" }", "utf8");
+  const t = makeContext({ preBoundTo: df.dir });
+  try {
+    const code = await syncCommand(t.ctx, { yes: true });
+    assert.equal(code, 1);
+    assert.ok(t.log.captured.some((l) => l.includes("Invalid JSON in")));
+    assert.equal(t.runner.calls.length, 0);
   } finally {
     t.cleanup();
     df.cleanup();
@@ -139,8 +154,10 @@ test("sync: clones missing repo and runs install_cmd", async () => {
     repos: [{ name: "tool-alpha", url: "https://x/tool-alpha.git", install_cmd: "npm install" }],
   });
   const t = makeContext({ preBoundTo: df.dir });
-  // Configure mock runner to "succeed" for git clone + npm install.
-  t.runner.respond("git clone", { code: 0 });
+  const targetDir = join(t.homeDir, "repos", "tool-alpha");
+  // A real clone creates its target directory; the mock must too, so the
+  // install_cwd check sees the same filesystem state as a live run.
+  t.runner.respond("git clone", { code: 0, effect: () => mkdirSync(targetDir, { recursive: true }) });
   t.runner.respond("npm install", { code: 0 });
   try {
     const code = await syncCommand(t.ctx, { yes: true });
@@ -151,7 +168,7 @@ test("sync: clones missing repo and runs install_cmd", async () => {
     assert.match(t.runner.calls[1].command, /^git clone https:\/\/x\/tool-alpha\.git/);
     assert.equal(t.runner.calls[2].command, "npm install");
     // install_cmd runs in the cloned repo's targetDir.
-    assert.equal(t.runner.calls[2].opts.cwd, join(t.homeDir, "repos", "tool-alpha"));
+    assert.equal(t.runner.calls[2].opts.cwd, targetDir);
   } finally {
     t.cleanup();
     df.cleanup();

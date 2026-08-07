@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { join } from "node:path";
-import { makeContext } from "../helpers.js";
+import { makeContext, stubInstalledRepo } from "../helpers.js";
 import { applyPlan } from "../../src/apply.js";
 import { Plan } from "../../src/plan.js";
 
@@ -542,6 +542,428 @@ test("applyPlan: skipSetup bypasses setup steps", async () => {
     const results = await applyPlan(t.ctx, plan, { skipSetup: true });
     assert.equal(results.length, 0);
     assert.equal(t.runner.calls.length, 0);
+  } finally {
+    t.cleanup();
+  }
+});
+
+// --- install_cwd validation ---
+
+// A manifest that puts a command string in `install_cwd` yields an installCwd
+// that does not exist. Spawning with a missing cwd surfaces on Windows as
+// `spawn cmd.exe ENOENT`, which names the shell rather than the bad directory.
+// These guards prove the failure is reported against install_cwd instead.
+
+test("applyPlan: update repo with a missing install_cwd reports the bad directory", async () => {
+  const t = makeContext({ platform: "win32" });
+  try {
+    const reposPath = join(t.homeDir, "repos");
+    const targetDir = stubInstalledRepo(reposPath, "uatu");
+    const badCwd = join(targetDir, "npm install && npm run build");
+    const plan: Plan = {
+      apps: [],
+      npm: [],
+      hooks: [],
+      setup: [],
+      repos: [
+        {
+          name: "uatu",
+          url: "https://x/uatu.git",
+          targetDir,
+          installCwd: badCwd,
+          installCmd: null,
+          updateCmd: "uatu update",
+          action: "update",
+          exists: true,
+          vcs: "soda",
+        },
+      ],
+      reposPath,
+      platform: "win32",
+      activeProfile: { profile: null, source: "none" },
+    };
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes("install_cwd"),
+      `detail should name install_cwd, got: ${results[0].detail}`,
+    );
+    assert.ok(
+      results[0].detail?.includes(badCwd),
+      `detail should name the missing directory, got: ${results[0].detail}`,
+    );
+    assert.equal(t.runner.calls.length, 0);
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: pull-and-install repo with a missing install_cwd reports the bad directory", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond(/^sd pull/, { code: 0, stdout: "Updated 1 file" });
+  try {
+    const reposPath = join(t.homeDir, "repos");
+    const targetDir = stubInstalledRepo(reposPath, "uatu");
+    const badCwd = join(targetDir, "packages/missing");
+    const plan: Plan = {
+      apps: [],
+      npm: [],
+      hooks: [],
+      setup: [],
+      repos: [
+        {
+          name: "uatu",
+          url: "https://x/uatu.git",
+          targetDir,
+          installCwd: badCwd,
+          installCmd: "npm install",
+          updateCmd: null,
+          action: "pull-and-install",
+          exists: true,
+          vcs: "soda",
+        },
+      ],
+      reposPath,
+      platform: "win32",
+      activeProfile: { profile: null, source: "none" },
+    };
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes(badCwd),
+      `detail should name the missing directory, got: ${results[0].detail}`,
+    );
+    assert.equal(
+      t.runner.calls.filter((c) => c.command.includes("npm install")).length,
+      0,
+      "install_cmd must not run against a missing cwd",
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: update repo with an existing install_cwd runs the update command", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond(/^uatu update/, { code: 0 });
+  try {
+    const reposPath = join(t.homeDir, "repos");
+    const targetDir = stubInstalledRepo(reposPath, "uatu");
+    const plan: Plan = {
+      apps: [],
+      npm: [],
+      hooks: [],
+      setup: [],
+      repos: [
+        {
+          name: "uatu",
+          url: "https://x/uatu.git",
+          targetDir,
+          installCwd: targetDir,
+          installCmd: null,
+          updateCmd: "uatu update",
+          action: "update",
+          exists: true,
+          vcs: "soda",
+        },
+      ],
+      reposPath,
+      platform: "win32",
+      activeProfile: { profile: null, source: "none" },
+    };
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results.length, 1);
+    assert.equal(results[0].ok, true, JSON.stringify(results));
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["uatu update"]);
+    assert.equal(t.runner.calls[0].opts.cwd, targetDir);
+  } finally {
+    t.cleanup();
+  }
+});
+
+// --- failed repo commands report their output ---
+
+// The command's own stderr or stdout is the only explanation a user gets for a
+// failed repo step. These guards prove that explanation reaches the result
+// instead of being reduced to the exit code.
+
+function failingUpdatePlan(t: ReturnType<typeof makeContext>, response: { stdout?: string; stderr?: string }): Plan {
+  const reposPath = join(t.homeDir, "repos");
+  const targetDir = stubInstalledRepo(reposPath, "forge");
+  t.runner.respond("forge update", { fail: true, code: 1, ...response });
+  return {
+    apps: [],
+    npm: [],
+    hooks: [],
+    setup: [],
+    repos: [
+      {
+        name: "forge",
+        url: "https://x/forge.git",
+        targetDir,
+        installCwd: targetDir,
+        installCmd: null,
+        updateCmd: "forge update",
+        action: "update",
+        exists: true,
+        vcs: "soda",
+      },
+    ],
+    reposPath,
+    platform: "win32",
+    activeProfile: { profile: null, source: "none" },
+  };
+}
+
+test("applyPlan: failed repo command reports the stderr that explains the failure", async () => {
+  const t = makeContext({ platform: "win32" });
+  try {
+    const plan = failingUpdatePlan(t, {
+      stderr: [
+        "soda: raw git commit blocked in this sd-powered repo",
+        'Use "sd submit" instead.',
+        "fatal: in 'preparing' phase, update aborted by the reference-transaction hook",
+      ].join("\n"),
+    });
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes("raw git commit blocked"),
+      `detail should carry the stderr explanation, got: ${results[0].detail}`,
+    );
+    assert.ok(
+      results[0].detail?.includes("reference-transaction hook"),
+      `detail should keep later stderr lines, got: ${results[0].detail}`,
+    );
+    assert.ok(
+      results[0].detail?.includes("forge update"),
+      `detail should still name the command, got: ${results[0].detail}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: failed repo command reports stdout when stderr is empty", async () => {
+  const t = makeContext({ platform: "win32" });
+  try {
+    // Tools that emit a JSON result envelope put the diagnosis on stdout and
+    // leave stderr empty, several lines into the payload.
+    const plan = failingUpdatePlan(t, {
+      stdout: [
+        "{",
+        '  "ok": false,',
+        '  "command": "update.run",',
+        '  "data": null,',
+        '  "error": {',
+        '    "code": "GIT_PULL_FAILED",',
+        '    "message": "soda: raw git commit blocked in this sd-powered repo"',
+        "  }",
+        "}",
+      ].join("\n"),
+      stderr: "",
+    });
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes("GIT_PULL_FAILED"),
+      `detail should reach the error code inside the envelope, got: ${results[0].detail}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: failed repo command truncates very long output", async () => {
+  const t = makeContext({ platform: "win32" });
+  try {
+    const plan = failingUpdatePlan(t, { stderr: `first line of the failure\n${"x".repeat(20000)}` });
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes("first line of the failure"),
+      `detail should keep the start of the output, got: ${results[0].detail?.slice(0, 200)}`,
+    );
+    assert.ok(
+      (results[0].detail?.length ?? 0) < 1200,
+      `detail should stay bounded, got ${results[0].detail?.length} chars`,
+    );
+    assert.ok(
+      results[0].detail?.includes("truncated"),
+      "detail should say the output was truncated",
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: failed repo command with no output still reports command and exit code", async () => {
+  const t = makeContext({ platform: "win32" });
+  try {
+    const plan = failingUpdatePlan(t, { stdout: "", stderr: "" });
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes("forge update"),
+      `detail should name the command, got: ${results[0].detail}`,
+    );
+    assert.ok(
+      results[0].detail?.includes("1"),
+      `detail should name the exit code, got: ${results[0].detail}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+// --- failed hooks and setup steps report their output ---
+
+test("applyPlan: failed hook reports the output that explains the failure", async () => {
+  const t = makeContext({ platform: "win32" });
+  // A tool that reports failures as a JSON envelope puts the diagnosis several
+  // lines in, so the opening brace explains nothing.
+  t.runner.respond("rotunda sync", {
+    fail: true,
+    code: 1,
+    stderr: ['{', '  "ok": false,', '  "error": {', '    "code": "SYNC_CONFLICT"', "  }", "}"].join("\n"),
+  });
+  try {
+    const plan: Plan = {
+      apps: [],
+      repos: [],
+      hooks: [{
+        name: "rotunda-sync",
+        stage: "post-repos",
+        command: "rotunda sync",
+        cwd: t.homeDir,
+        interactive: false,
+      }],
+      npm: [],
+      setup: [],
+      reposPath: join(t.homeDir, "repos"),
+      platform: "win32",
+      activeProfile: { profile: null, source: "none" },
+    };
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes("SYNC_CONFLICT"),
+      `detail should reach the error inside the envelope, got: ${results[0].detail}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: failed setup step reports the output that explains the failure", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond("bad-auth", {
+    fail: true,
+    code: 1,
+    stderr: ['{', '  "ok": false,', '  "error": {', '    "code": "AUTH_EXPIRED"', "  }", "}"].join("\n"),
+  });
+  try {
+    const plan: Plan = {
+      apps: [],
+      repos: [],
+      hooks: [],
+      npm: [],
+      setup: [{ name: "auth", command: "bad-auth", checkCmd: null, cwd: t.homeDir, interactive: false }],
+      reposPath: join(t.homeDir, "repos"),
+      platform: "win32",
+      activeProfile: { profile: null, source: "none" },
+    };
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results[0].ok, false);
+    assert.ok(
+      results[0].detail?.includes("AUTH_EXPIRED"),
+      `detail should reach the error inside the envelope, got: ${results[0].detail}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+// --- logged commands match the backend that runs them ---
+
+// The logged command is the user's record of what marshal did. Naming git while
+// the soda backend runs sd misreports the run and misdirects debugging.
+
+function pullOnlyPlan(t: ReturnType<typeof makeContext>, vcs: "git" | "soda"): Plan {
+  const reposPath = join(t.homeDir, "repos");
+  const targetDir = stubInstalledRepo(reposPath, "eidos");
+  return {
+    apps: [],
+    npm: [],
+    hooks: [],
+    setup: [],
+    repos: [{
+      name: "eidos",
+      url: "https://x/eidos.git",
+      targetDir,
+      installCwd: targetDir,
+      installCmd: null,
+      updateCmd: null,
+      action: "pull",
+      exists: true,
+      vcs,
+    }],
+    reposPath,
+    platform: "win32",
+    activeProfile: { profile: null, source: "none" },
+  };
+}
+
+test("applyPlan: pulling a soda repo logs the sd command it runs", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond("sd pull", { code: 0, stdout: "Updated 1 file" });
+  try {
+    const results = await applyPlan(t.ctx, pullOnlyPlan(t, "soda"));
+    assert.equal(results[0].ok, true, JSON.stringify(results));
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["sd pull"]);
+    const logged = t.log.captured.filter((l) => l.includes("→"));
+    assert.ok(
+      logged.some((l) => l.includes("sd pull")),
+      `log should name the sd command that ran, got: ${JSON.stringify(logged)}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: cloning a soda repo logs the sd command it runs", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond("sd clone", { code: 0 });
+  try {
+    const plan = pullOnlyPlan(t, "soda");
+    plan.repos[0].action = "clone";
+    plan.repos[0].exists = false;
+    const results = await applyPlan(t.ctx, plan);
+    assert.equal(results[0].ok, true, JSON.stringify(results));
+    const logged = t.log.captured.filter((l) => l.includes("→"));
+    assert.ok(
+      logged.some((l) => l.includes("sd clone")),
+      `log should name the sd command that ran, got: ${JSON.stringify(logged)}`,
+    );
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("applyPlan: pulling a git repo logs the git command it runs", async () => {
+  const t = makeContext({ platform: "win32" });
+  t.runner.respond("git pull", { code: 0, stdout: "Updating abc..def" });
+  try {
+    const results = await applyPlan(t.ctx, pullOnlyPlan(t, "git"));
+    assert.equal(results[0].ok, true, JSON.stringify(results));
+    assert.deepEqual(t.runner.calls.map((c) => c.command), ["git pull --ff-only"]);
+    const logged = t.log.captured.filter((l) => l.includes("→"));
+    assert.ok(
+      logged.some((l) => l.includes("git pull --ff-only")),
+      `log should name the git command that ran, got: ${JSON.stringify(logged)}`,
+    );
   } finally {
     t.cleanup();
   }

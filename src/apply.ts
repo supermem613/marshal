@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { MarshalContext } from "./context.js";
 import { Plan, RepoStep, AppStep, NpmStep, HookStep, SetupStep } from "./plan.js";
@@ -200,9 +200,7 @@ async function runSetupStep(ctx: MarshalContext, step: SetupStep): Promise<Execu
     return { step: `setup: ${step.name}`, ok: true, detail };
   } catch (err) {
     if (err instanceof ProcessError) {
-      const output = (err.result.stderr || err.result.stdout).trim().split("\n")[0];
-      const detail = output || `command failed (exit ${err.result.code})`;
-      return { step: `setup: ${step.name}`, ok: false, detail };
+      return { step: `setup: ${step.name}`, ok: false, detail: describeProcessFailure(err) };
     }
     return { step: `setup: ${step.name}`, ok: false, detail: (err as Error).message };
   }
@@ -222,53 +220,89 @@ async function runHook(ctx: MarshalContext, hook: HookStep): Promise<ExecutionRe
     return { step: `hook: ${hook.name}`, ok: true, detail };
   } catch (err) {
     if (err instanceof ProcessError) {
-      const output = (err.result.stderr || err.result.stdout).trim().split("\n")[0];
-      const detail = output || `command failed (exit ${err.result.code})`;
-      return { step: `hook: ${hook.name}`, ok: false, detail };
+      return { step: `hook: ${hook.name}`, ok: false, detail: describeProcessFailure(err) };
     }
     return { step: `hook: ${hook.name}`, ok: false, detail: (err as Error).message };
   }
 }
 
 async function provisionRepo(ctx: MarshalContext, repo: RepoStep): Promise<ExecutionResult> {
+  const backend = ctx.backendFor(repo.vcs);
   try {
     if (repo.action === "clone-and-install") {
       mkdirSync(dirname(repo.targetDir), { recursive: true });
-      ctx.log.info(`→ git clone ${repo.url} ${repo.targetDir}`);
-      await ctx.backendFor(repo.vcs).clone(ctx, repo.url, repo.targetDir);
+      ctx.log.info(`→ ${backend.cloneCommand(repo.url, repo.targetDir)}`);
+      await backend.clone(ctx, repo.url, repo.targetDir);
+      requireInstallCwd(repo);
       ctx.log.info(`→ (${repo.installCwd}) ${repo.installCmd}`);
       await ctx.runner.exec(repo.installCmd as string, { cwd: repo.installCwd, inherit: false });
       return { step: `repo: ${repo.name}`, ok: true, detail: "cloned + installed" };
     }
     if (repo.action === "clone") {
       mkdirSync(dirname(repo.targetDir), { recursive: true });
-      ctx.log.info(`→ git clone ${repo.url} ${repo.targetDir}`);
-      await ctx.backendFor(repo.vcs).clone(ctx, repo.url, repo.targetDir);
+      ctx.log.info(`→ ${backend.cloneCommand(repo.url, repo.targetDir)}`);
+      await backend.clone(ctx, repo.url, repo.targetDir);
       return { step: `repo: ${repo.name}`, ok: true, detail: "cloned" };
     }
     if (repo.action === "update") {
+      requireInstallCwd(repo);
       ctx.log.info(`→ (${repo.installCwd}) ${repo.updateCmd}`);
       await ctx.runner.exec(repo.updateCmd as string, { cwd: repo.installCwd, inherit: false });
       return { step: `repo: ${repo.name}`, ok: true, detail: "updated" };
     }
     // pull-and-install or pull
-    ctx.log.info(`→ (${repo.targetDir}) git pull --ff-only`);
-    const pull = await ctx.backendFor(repo.vcs).pull(ctx, repo.targetDir);
+    ctx.log.info(`→ (${repo.targetDir}) ${backend.pullCommand}`);
+    const pull = await backend.pull(ctx, repo.targetDir);
     if (!pull.changed) {
       return { step: `repo: ${repo.name}`, ok: true, detail: "already up to date" };
     }
     if (!repo.installCmd) {
       return { step: `repo: ${repo.name}`, ok: true, detail: "pulled" };
     }
+    // Checked after the pull, since the pull can be what creates install_cwd.
+    requireInstallCwd(repo);
     ctx.log.info(`→ (${repo.installCwd}) ${repo.installCmd}`);
     await ctx.runner.exec(repo.installCmd, { cwd: repo.installCwd, inherit: false });
     return { step: `repo: ${repo.name}`, ok: true, detail: "pulled + reinstalled" };
   } catch (err) {
     const msg = err instanceof ProcessError
-      ? `${err.message.split("\n")[0]}`
+      ? describeProcessFailure(err)
       : (err as Error).message;
     return { step: `repo: ${repo.name}`, ok: false, detail: msg };
   }
+}
+
+// A failed command's own output is the only explanation the user gets. Reducing
+// it to an exit code turns an actionable error into a dead end. The budget is
+// wide enough to carry a tool's whole error envelope and narrow enough that a
+// failing build cannot bury the results summary.
+const FAILURE_OUTPUT_BUDGET = 600;
+
+function describeProcessFailure(err: ProcessError): string {
+  const header = `Command failed (exit ${err.result.code}): ${err.result.command}`;
+  const output = (err.result.stderr || err.result.stdout).trim();
+  if (!output) {
+    return header;
+  }
+  const excerpt = output.slice(0, FAILURE_OUTPUT_BUDGET).trimEnd();
+  const indented = excerpt.split("\n").map((line) => `    ${line}`).join("\n");
+  const suffix = output.length > FAILURE_OUTPUT_BUDGET ? "\n    ... output truncated" : "";
+  return `${header}\n${indented}${suffix}`;
+}
+
+// Spawning with a cwd that does not exist reports ENOENT against the shell
+// binary, not against the directory. On Windows that surfaces as
+// "spawn C:\WINDOWS\system32\cmd.exe ENOENT", which sends readers hunting for a
+// missing cmd.exe. Fail here instead so the message names install_cwd.
+function requireInstallCwd(repo: RepoStep): void {
+  if (existsSync(repo.installCwd)) {
+    return;
+  }
+  throw new Error(
+    `install_cwd does not exist: ${repo.installCwd}. ` +
+    `Check the "install_cwd" field of repo "${repo.name}" in marshal.json. ` +
+    `It must be a subdirectory inside the repo, not a command.`,
+  );
 }
 
 function escapeRegExp(value: string): string {

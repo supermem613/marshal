@@ -654,8 +654,9 @@ function isValidHookCwd(cwd: string): boolean {
 // Commit and push marshal.json changes in the bound dotfiles repo.
 // Best-effort: logs warnings on failure but does not fail the command.
 export async function commitAndPush(ctx: MarshalContext, dotfilesRepo: string, message: string): Promise<void> {
-  const vcs = dotfilesVcs(ctx);
+  let vcs;
   try {
+    vcs = dotfilesVcs(ctx);
     await ctx.backendFor(vcs).commitFile(ctx, dotfilesRepo, MANIFEST_FILENAME, message);
   } catch (err) {
     const detail = err instanceof ProcessError ? err.result.stderr || err.result.stdout : (err as Error).message;
