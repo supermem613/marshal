@@ -72,6 +72,7 @@ export async function syncCommand(ctx: MarshalContext, opts: SyncOptions): Promi
     homeDir: ctx.homeDir,
     dotfilesRepo: dotfiles,
     platform: ctx.platform,
+    reposPath: binding.reposPath,
     repoFilter: requested,
     includeHooks: requested.length === 0 || opts.hooks === true,
     includeSetup: opts.includeSetup === true,

@@ -184,3 +184,110 @@ test("bind path: writes parseable JSON to ~/.marshal.json", async () => {
     df.cleanup();
   }
 });
+
+test("bind path --repos-path: resolves and stores per-machine reposPath", async () => {
+  const df = makeDotfilesRepo({ version: 1 });
+  const t = makeContext();
+  const expected = join(t.homeDir, "work-repos");
+  try {
+    const code = await bindCommand(t.ctx, df.dir, { reposPath: "~/work-repos" });
+    assert.equal(code, 0);
+    const b = readBinding(t.ctx.homeDir);
+    assert.equal(b?.dotfilesRepo, df.dir);
+    assert.equal(b?.reposPath, expected);
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("bind --repos-path and --unset-repos-path without target update existing binding", async () => {
+  const df = makeDotfilesRepo({ version: 1 });
+  const t = makeContext({ preBoundTo: df.dir, preBoundProfile: "work" });
+  const expected = join(t.homeDir, "src");
+  try {
+    const setCode = await bindCommand(t.ctx, undefined, { reposPath: "src" });
+    assert.equal(setCode, 0);
+    let b = readBinding(t.ctx.homeDir);
+    assert.equal(b?.dotfilesRepo, df.dir);
+    assert.equal(b?.profile, "work");
+    assert.equal(b?.reposPath, expected);
+
+    const showCode = await bindCommand(t.ctx, undefined, { show: true });
+    assert.equal(showCode, 0);
+    assert.ok(t.log.captured.some((l) => l.includes(`reposPath: ${expected}`)));
+
+    const unsetCode = await bindCommand(t.ctx, undefined, { unsetReposPath: true });
+    assert.equal(unsetCode, 0);
+    b = readBinding(t.ctx.homeDir);
+    assert.equal(b?.dotfilesRepo, df.dir);
+    assert.equal(b?.profile, "work");
+    assert.equal(b?.reposPath, undefined);
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("bind --repos-path without target fails when no binding exists", async () => {
+  const t = makeContext();
+  try {
+    const code = await bindCommand(t.ctx, undefined, { reposPath: "~/src" });
+    assert.equal(code, 1);
+    assert.ok(t.log.captured.some((l) => l.startsWith("error:") && l.includes("No binding found")));
+  } finally {
+    t.cleanup();
+  }
+});
+
+test("bind rejects conflicting or blank repos-path options with exit 2", async () => {
+  const df = makeDotfilesRepo({ version: 1 });
+  const t = makeContext({ preBoundTo: df.dir });
+  try {
+    const conflictCode = await bindCommand(t.ctx, df.dir, {
+      reposPath: "~/src",
+      unsetReposPath: true,
+    });
+    assert.equal(conflictCode, 2);
+    assert.ok(t.log.captured.some((l) => l.includes("--repos-path") && l.includes("--unset-repos-path")));
+
+    t.log.captured.length = 0;
+    const blankCode = await bindCommand(t.ctx, df.dir, { reposPath: "   " });
+    assert.equal(blankCode, 2);
+    assert.ok(t.log.captured.some((l) => l.includes("--repos-path")));
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});
+
+test("bind URL --repos-path: uses reposPath as default dotfiles clone parent and records it", async () => {
+  const t = makeContext();
+  const customRoot = join(t.homeDir, "custom-root");
+  const expectedCloneDir = join(customRoot, "dotfiles");
+  t.runner.respond(/^git clone/, { code: 0 });
+  const origExec = t.runner.exec.bind(t.runner);
+  t.runner.exec = async (command, opts) => {
+    const result = await origExec(command, opts);
+    if (command.startsWith("git clone")) {
+      const { mkdirSync, writeFileSync } = await import("node:fs");
+      mkdirSync(expectedCloneDir, { recursive: true });
+      writeFileSync(join(expectedCloneDir, "marshal.json"), JSON.stringify({ version: 1 }));
+    }
+    return result;
+  };
+  try {
+    const code = await bindCommand(
+      t.ctx,
+      "https://github.com/me/dotfiles.git",
+      { reposPath: customRoot, sync: false },
+    );
+    assert.equal(code, 0);
+    assert.equal(t.runner.calls[0].command, `git clone https://github.com/me/dotfiles.git "${expectedCloneDir}"`);
+    const b = readBinding(t.ctx.homeDir);
+    assert.equal(b?.dotfilesRepo, expectedCloneDir);
+    assert.equal(b?.reposPath, customRoot);
+  } finally {
+    t.cleanup();
+  }
+});

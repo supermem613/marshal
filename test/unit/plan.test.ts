@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildPlan, resolveReposPath, unknownRepoNames } from "../../src/plan.js";
+import { buildPlan, resolveReposPath, resolveReposPathWithSource, unknownRepoNames } from "../../src/plan.js";
 import { Manifest } from "../../src/manifest.js";
 
 function makeManifest(over: Partial<Manifest> = {}): Manifest {
@@ -27,6 +27,47 @@ test("resolveReposPath: defaults to ~/repos", () => {
 test("resolveReposPath: respects manifest override", () => {
   const r = resolveReposPath(makeManifest({ reposPath: "~/code" }), "/home/u").replace(/\\/g, "/");
   assert.equal(r, "/home/u/code");
+});
+
+test("resolveReposPathWithSource: prefers binding over manifest over default", () => {
+  const fromDefault = resolveReposPathWithSource(makeManifest(), "/home/u");
+  assert.equal(fromDefault.path.replace(/\\/g, "/"), "/home/u/repos");
+  assert.equal(fromDefault.source, "default");
+
+  const fromManifest = resolveReposPathWithSource(makeManifest({ reposPath: "~/code" }), "/home/u");
+  assert.equal(fromManifest.path.replace(/\\/g, "/"), "/home/u/code");
+  assert.equal(fromManifest.source, "manifest");
+
+  const fromBinding = resolveReposPathWithSource(makeManifest({ reposPath: "~/code" }), "/home/u", "~/machine-repos");
+  assert.equal(fromBinding.path.replace(/\\/g, "/"), "/home/u/machine-repos");
+  assert.equal(fromBinding.source, "binding");
+
+  assert.equal(
+    resolveReposPath(makeManifest({ reposPath: "~/code" }), "/home/u", "~/machine-repos").replace(/\\/g, "/"),
+    "/home/u/machine-repos",
+  );
+});
+
+test("buildPlan: uses binding reposPath override for repo targetDir and reposPathSource", () => {
+  const home = mkdtempSync(join(tmpdir(), "marshal-plan-"));
+  const machineRoot = join(home, "custom-repos");
+  try {
+    const m = makeManifest({
+      reposPath: "~/manifest-repos",
+      repos: [{ name: "tool-alpha", url: "u1", install_cmd: "i" }],
+    });
+    const p = buildPlan(m, {
+      homeDir: home,
+      dotfilesRepo: home,
+      platform: "win32",
+      reposPath: machineRoot,
+    });
+    assert.equal(p.reposPath, machineRoot);
+    assert.equal(p.reposPathSource, "binding");
+    assert.equal(p.repos[0].targetDir, join(machineRoot, "tool-alpha"));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("buildPlan: setup steps excluded by default, included with includeSetup", () => {

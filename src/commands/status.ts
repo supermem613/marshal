@@ -36,6 +36,8 @@ interface StatusReport {
   platform: string;
   profile: string | null;
   profileSource: string;
+  reposPath: string;
+  reposPathSource: string;
   setup: SetupStatusRow[];
   apps: AppStatusRow[];
   npm: NpmStatusRow[];
@@ -81,6 +83,7 @@ export async function statusCommand(ctx: MarshalContext, opts: StatusOptions): P
     homeDir: ctx.homeDir,
     dotfilesRepo: bound,
     platform: ctx.platform,
+    reposPath: binding.reposPath,
     includeSetup: true,
     activeProfile,
   });
@@ -112,11 +115,14 @@ export async function statusCommand(ctx: MarshalContext, opts: StatusOptions): P
     };
   });
 
+  const reposPathSource = plan.reposPathSource ?? "default";
   const report: StatusReport = {
     bound,
     platform: ctx.platform,
     profile: activeProfile.profile,
     profileSource: activeProfile.source,
+    reposPath: plan.reposPath,
+    reposPathSource,
     setup,
     apps,
     npm,
@@ -131,6 +137,7 @@ export async function statusCommand(ctx: MarshalContext, opts: StatusOptions): P
   ctx.log.info(`Bound: ${bound}`);
   ctx.log.info(`Platform: ${ctx.platform}`);
   ctx.log.info(`Profile: ${formatActiveProfile(activeProfile)}`);
+  ctx.log.info(`Repos path: ${plan.reposPath} (${reposPathSource})`);
   ctx.log.info("");
   if (setup.length > 0) {
     ctx.log.info("Setup:");

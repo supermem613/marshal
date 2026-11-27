@@ -16,6 +16,7 @@ export const BindingSchema = z.object({
   dotfilesRepo: z.string().min(1),
   vcs: VcsSchema.optional(),
   profile: z.string().regex(/^[a-z0-9][a-z0-9-]*$/i, "profile must be alphanumeric/hyphen").optional(),
+  reposPath: z.string().refine((s) => s.trim().length > 0, "reposPath must be a non-empty string").optional(),
 });
 
 export type Binding = z.infer<typeof BindingSchema>;
@@ -57,9 +58,14 @@ export function readBinding(home: string = homedir()): Binding | null {
 
 // Validates the target directory contains a marshal.json before persisting
 // the binding — refuses to bind to a non-marshal repo (rotunda convention).
-// When vcs is omitted the previously declared vcs is preserved, so re-binding
-// or profile changes never silently erase a declared backend.
-export function writeBinding(dotfilesRepo: string, home: string = homedir(), vcs?: Vcs): Binding {
+// When vcs or reposPath is omitted the previously declared value is preserved,
+// so re-binding or profile changes never silently erase machine-local settings.
+export function writeBinding(
+  dotfilesRepo: string,
+  home: string = homedir(),
+  vcs?: Vcs,
+  reposPath?: string | null,
+): Binding {
   if (!existsSync(dotfilesRepo)) {
     throw new BindingError(`Dotfiles repo path does not exist: ${dotfilesRepo}`);
   }
@@ -67,15 +73,20 @@ export function writeBinding(dotfilesRepo: string, home: string = homedir(), vcs
   if (!existsSync(manifestPath)) {
     throw new BindingError(`No ${MANIFEST_FILENAME} at ${dotfilesRepo}. Create one with \`marshal init\` first.`);
   }
+  if (typeof reposPath === "string" && reposPath.trim().length === 0) {
+    throw new BindingError("reposPath must be a non-empty string.");
+  }
   const path = bindingPath(home);
   mkdirSync(dirname(path), { recursive: true });
   const existing = readBinding(home);
   const resolvedVcs = vcs ?? existing?.vcs;
+  const resolvedReposPath = reposPath === null ? undefined : (reposPath ?? existing?.reposPath);
   const binding: Binding = {
     version: 1,
     dotfilesRepo,
     ...(resolvedVcs ? { vcs: resolvedVcs } : {}),
     ...(existing?.profile ? { profile: existing.profile } : {}),
+    ...(resolvedReposPath ? { reposPath: resolvedReposPath } : {}),
   };
   writeFileSync(path, JSON.stringify(binding, null, 2) + "\n", "utf8");
   return binding;
@@ -89,6 +100,24 @@ export function writeBindingProfile(profile: string | null, home: string = homed
     dotfilesRepo: existing.dotfilesRepo,
     ...(existing.vcs ? { vcs: existing.vcs } : {}),
     ...(profile ? { profile } : {}),
+    ...(existing.reposPath ? { reposPath: existing.reposPath } : {}),
+  };
+  writeFileSync(path, JSON.stringify(binding, null, 2) + "\n", "utf8");
+  return binding;
+}
+
+export function writeBindingReposPath(reposPath: string | null, home: string = homedir()): Binding {
+  if (typeof reposPath === "string" && reposPath.trim().length === 0) {
+    throw new BindingError("reposPath must be a non-empty string.");
+  }
+  const existing = requireBinding(home);
+  const path = bindingPath(home);
+  const binding: Binding = {
+    version: 1,
+    dotfilesRepo: existing.dotfilesRepo,
+    ...(existing.vcs ? { vcs: existing.vcs } : {}),
+    ...(existing.profile ? { profile: existing.profile } : {}),
+    ...(reposPath ? { reposPath } : {}),
   };
   writeFileSync(path, JSON.stringify(binding, null, 2) + "\n", "utf8");
   return binding;

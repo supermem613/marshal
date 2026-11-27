@@ -53,9 +53,11 @@ export async function listCommand(ctx: MarshalContext, opts: ListOptions): Promi
     homeDir: ctx.homeDir,
     dotfilesRepo: binding.dotfilesRepo,
     platform: ctx.platform,
+    reposPath: binding.reposPath,
     includeSetup: true,
     activeProfile,
   });
+  const reposPathSource = plan.reposPathSource ?? "default";
 
   if (opts.json) {
     ctx.log.raw(JSON.stringify({
@@ -64,6 +66,7 @@ export async function listCommand(ctx: MarshalContext, opts: ListOptions): Promi
       profile: activeProfile.profile,
       profileSource: activeProfile.source,
       reposPath: plan.reposPath,
+      reposPathSource,
       profiles: manifest.profiles,
       apps: manifest.apps,
       npm: manifest.npm,
@@ -85,7 +88,7 @@ export async function listCommand(ctx: MarshalContext, opts: ListOptions): Promi
   ctx.log.dim(`  │  bound:    ${binding.dotfilesRepo}`);
   ctx.log.dim(`  │  platform: ${ctx.platform}`);
   ctx.log.dim(`  │  profile:  ${formatActiveProfile(activeProfile)}`);
-  ctx.log.dim(`  │  repos:    ${plan.reposPath}`);
+  ctx.log.dim(`  │  repos:    ${plan.reposPath} (${reposPathSource})`);
   renderProfiles(ctx, manifest, activeProfile.profile);
   renderSetup(ctx, manifest.setup, planSetupNames);
   renderApps(ctx, manifest.apps, planAppIds);

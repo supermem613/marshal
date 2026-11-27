@@ -132,6 +132,7 @@ async function reportStatus(
     homeDir: ctx.homeDir,
     dotfilesRepo: dotfiles,
     platform: ctx.platform,
+    reposPath: binding?.reposPath,
     includeSetup: true,
     activeProfile,
   });

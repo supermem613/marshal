@@ -30,6 +30,7 @@ export interface MakeContextOptions {
   // If provided, the binding file is pre-written with this dotfilesRepo path.
   preBoundTo?: string;
   preBoundProfile?: string;
+  preBoundReposPath?: string;
 }
 
 export function makeContext(opts: MakeContextOptions = {}): TestContext {
@@ -45,6 +46,7 @@ export function makeContext(opts: MakeContextOptions = {}): TestContext {
         version: 1,
         dotfilesRepo: opts.preBoundTo,
         ...(opts.preBoundProfile ? { profile: opts.preBoundProfile } : {}),
+        ...(opts.preBoundReposPath ? { reposPath: opts.preBoundReposPath } : {}),
       }, null, 2),
       "utf8",
     );

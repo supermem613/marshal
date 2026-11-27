@@ -169,3 +169,45 @@ test("list --json: emits raw manifest", async () => {
     df.cleanup();
   }
 });
+
+test("status and list: use per-machine binding reposPath and report source", async () => {
+  const df = makeDotfilesRepo({
+    version: 1,
+    reposPath: "~/manifest-repos",
+    repos: [{ name: "tool-alpha", url: "u1" }],
+  });
+  const t = makeContext({ preBoundTo: df.dir, preBoundReposPath: "~/machine-repos" });
+  const machineRoot = join(t.homeDir, "machine-repos");
+  stubInstalledRepo(machineRoot, "tool-alpha");
+  try {
+    const statusJsonCode = await statusCommand(t.ctx, { json: true });
+    assert.equal(statusJsonCode, 0);
+    const statusRaw = t.log.captured.find((l) => l.startsWith("raw:"))!;
+    const statusParsed = JSON.parse(statusRaw.slice(5));
+    assert.equal(statusParsed.reposPath, machineRoot);
+    assert.equal(statusParsed.reposPathSource, "binding");
+    assert.equal(statusParsed.repos[0].installed, true);
+    assert.equal(statusParsed.repos[0].targetDir, join(machineRoot, "tool-alpha"));
+
+    t.log.captured.length = 0;
+    const statusHumanCode = await statusCommand(t.ctx, {});
+    assert.equal(statusHumanCode, 0);
+    assert.ok(t.log.captured.some((l) => l.includes(`Repos path: ${machineRoot} (binding)`)));
+
+    t.log.captured.length = 0;
+    const listJsonCode = await listCommand(t.ctx, { json: true });
+    assert.equal(listJsonCode, 0);
+    const listRaw = t.log.captured.find((l) => l.startsWith("raw:"))!;
+    const listParsed = JSON.parse(listRaw.slice(5));
+    assert.equal(listParsed.reposPath, machineRoot);
+    assert.equal(listParsed.reposPathSource, "binding");
+
+    t.log.captured.length = 0;
+    const listHumanCode = await listCommand(t.ctx, {});
+    assert.equal(listHumanCode, 0);
+    assert.ok(t.log.captured.some((l) => l.includes(`${machineRoot} (binding)`)));
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});

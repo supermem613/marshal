@@ -44,7 +44,8 @@ export function renderPlan(plan: Plan, log: Logger): void {
   }
   if (plan.repos.length > 0) {
     log.info("");
-    log.info(`  Repos (clone target: ${plan.reposPath}):`);
+    const source = plan.reposPathSource ? ` (${plan.reposPathSource})` : "";
+    log.info(`  Repos (clone target: ${plan.reposPath}${source}):`);
     for (const r of plan.repos) {
       log.info(`    • ${r.name.padEnd(20)} ${ACTION_LABEL[r.action].padEnd(18)} ${r.url}`);
     }

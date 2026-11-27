@@ -54,6 +54,13 @@ test("cli: sync --help mentions profile override", () => {
   assert.ok(r.stdout.includes("--profile"));
 });
 
+test("cli: bind --help mentions per-machine repos-path options", () => {
+  const r = run("bind --help");
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.includes("--repos-path"));
+  assert.ok(r.stdout.includes("--unset-repos-path"));
+});
+
 test("cli: profile help lists actionable profile subcommands", () => {
   const r = run("help profile");
   assert.equal(r.code, 0);

@@ -558,7 +558,8 @@ export async function removeItemsCommand(
   if (repos.length > 0 && opts.deleteFiles !== false) {
     const { rmSync, existsSync } = await import("node:fs");
     const { resolveReposPath } = await import("../plan.js");
-    const reposPath = resolveReposPath(manifest, ctx.homeDir);
+    const binding = requireBinding(ctx.homeDir);
+    const reposPath = resolveReposPath(manifest, ctx.homeDir, binding.reposPath);
     for (const repo of repos) {
       const target = join(reposPath, repo);
       if (existsSync(target)) {

@@ -89,7 +89,7 @@ The manifest stores `setup`, `apps`, `npm`, `repos`, and `hooks` as arrays becau
 | Field | Required | Default | Notes |
 |-------|----------|---------|-------|
 | `version` | ✅ | — | Must be `1`. |
-| `reposPath` | | `~/repos` | Where tool repos are cloned. Tilde expansion supported. |
+| `reposPath` | | `~/repos` | Shared default root where tool repos are cloned. Tilde expansion supported. Overridden per machine by `reposPath` in `~/.marshal.json`. |
 | `vcs` | | `git` | Version control backend for marshal's own self-update: `git` or `soda`. Applies only to marshal, never as a fleet default. Each repo declares its own `vcs` and defaults to `git`. Declared explicitly; never auto-detected. |
 | `profiles` | | `[]` | Declared profile names. Any item-level profile must appear here. |
 | `apps` | | `[]` | Winget packages installed before any repos. |
@@ -254,7 +254,8 @@ Per-machine global config. One file, one source of truth — no env vars, no wal
   "version": 1,
   "dotfilesRepo": "C:/Users/you/repos/dotfiles",
   "vcs": "git",
-  "profile": "work-laptop"
+  "profile": "work-laptop",
+  "reposPath": "D:/src"
 }
 ```
 
@@ -263,6 +264,8 @@ Manage with:
 ```pwsh
 marshal bind <url-or-path>     # set / re-bind
 marshal bind <url-or-path> --vcs soda   # set / re-bind and declare the dotfiles backend
+marshal bind --repos-path D:\src        # set per-machine repo sync root on existing binding
+marshal bind --unset-repos-path         # clear per-machine override (revert to marshal.json / ~/repos)
 marshal bind --show            # print current binding
 marshal bind --unset           # forget binding
 marshal where                  # print just the path (one line, scriptable)
@@ -279,6 +282,8 @@ marshal profile remove work-laptop
 ```
 
 The binding refuses to point at a directory that doesn't contain a `marshal.json`, so you can't accidentally bind to a non-marshal repo.
+
+`reposPath` is optional and overrides `reposPath` in `marshal.json` (and the `~/repos` default) on this machine only. Set it during `marshal bind <url-or-path> --repos-path <path>` or later with `marshal bind --repos-path <path>`, and clear it with `marshal bind --unset-repos-path`. Marshal resolves it to an absolute path when stored, preserves it across re-binds and profile changes, and does not move existing clones when changed.
 
 `vcs` is optional and defaults to `git`. It declares the version control backend for the dotfiles repo itself: the pulls and commits marshal makes to `marshal.json` during `marshal add` and `marshal profile`, plus marshal's self-update. Set it to `soda` when the dotfiles repo is a soda repo. Declare it durably with `marshal bind <url-or-path> --vcs soda`, which also routes the initial clone through that backend. Re-binding and profile changes preserve the declared `vcs`; omit `--vcs` to keep the current value.
 

@@ -54,13 +54,21 @@ export interface SetupStep {
   interactive: boolean;
 }
 
+export type ReposPathSource = "binding" | "manifest" | "default";
+
+export interface ResolvedReposPath {
+  path: string;
+  source: ReposPathSource;
+}
+
 export interface Plan {
   apps: AppStep[];
   npm: NpmStep[];
   repos: RepoStep[];
   hooks: HookStep[];
   setup: SetupStep[];
-  reposPath: string;     // absolute path of the resolved reposPath (for display)
+  reposPath: string;                // absolute path of the resolved reposPath (for display)
+  reposPathSource?: ReposPathSource;
   platform: Platform;
   activeProfile: ActiveProfile;
 }
@@ -69,6 +77,8 @@ export interface BuildPlanOptions {
   homeDir: string;
   dotfilesRepo: string;
   platform: Platform;
+  // Optional per-machine reposPath from ~/.marshal.json; overrides manifest.reposPath.
+  reposPath?: string;
   // Filter — if non-empty, only repos whose names appear here are included.
   // (apps unchanged.) Used by `marshal sync <name1> <name2>`.
   repoFilter?: string[];
@@ -79,13 +89,39 @@ export interface BuildPlanOptions {
   activeProfile?: ActiveProfile;
 }
 
-export function resolveReposPath(manifest: Manifest, homeDir: string): string {
-  const raw = manifest.reposPath ?? DEFAULT_REPOS_PATH;
-  return resolvePath(expandHome(raw, homeDir), homeDir, homeDir);
+export function resolveReposPathWithSource(
+  manifest: Manifest,
+  homeDir: string,
+  bindingReposPath?: string,
+): ResolvedReposPath {
+  if (bindingReposPath) {
+    return {
+      path: resolvePath(expandHome(bindingReposPath, homeDir), homeDir, homeDir),
+      source: "binding",
+    };
+  }
+  if (manifest.reposPath) {
+    return {
+      path: resolvePath(expandHome(manifest.reposPath, homeDir), homeDir, homeDir),
+      source: "manifest",
+    };
+  }
+  return {
+    path: resolvePath(expandHome(DEFAULT_REPOS_PATH, homeDir), homeDir, homeDir),
+    source: "default",
+  };
+}
+
+export function resolveReposPath(manifest: Manifest, homeDir: string, bindingReposPath?: string): string {
+  return resolveReposPathWithSource(manifest, homeDir, bindingReposPath).path;
 }
 
 export function buildPlan(manifest: Manifest, opts: BuildPlanOptions): Plan {
-  const reposPath = resolveReposPath(manifest, opts.homeDir);
+  const { path: reposPath, source: reposPathSource } = resolveReposPathWithSource(
+    manifest,
+    opts.homeDir,
+    opts.reposPath,
+  );
   const filter = opts.repoFilter && opts.repoFilter.length > 0 ? new Set(opts.repoFilter) : null;
   const activeProfile = opts.activeProfile ?? { profile: null, source: "none" };
 
@@ -160,7 +196,7 @@ export function buildPlan(manifest: Manifest, opts: BuildPlanOptions): Plan {
         interactive: s.interactive,
       }));
 
-  return { apps, npm, repos, hooks, setup, reposPath, platform: opts.platform, activeProfile };
+  return { apps, npm, repos, hooks, setup, reposPath, reposPathSource, platform: opts.platform, activeProfile };
 }
 
 // Verify a filter resolved to all real repo names — surface typos before

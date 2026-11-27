@@ -399,3 +399,31 @@ test("remove: confirmation declined leaves manifest intact", async () => {
     df.cleanup();
   }
 });
+
+test("remove: deletes cloned dir under per-machine binding reposPath", async () => {
+  const df = makeDotfilesRepo({
+    version: 1,
+    reposPath: "~/manifest-repos",
+    repos: [{ name: "tool-alpha", url: "u", install_cmd: "i" }],
+  });
+  const t = makeContext({ preBoundTo: df.dir });
+  const machineRoot = join(t.homeDir, "machine-repos");
+  const manifestRoot = join(t.homeDir, "manifest-repos");
+  const { writeFileSync } = await import("node:fs");
+  writeFileSync(
+    t.ctx.bindingPath,
+    JSON.stringify({ version: 1, dotfilesRepo: df.dir, reposPath: machineRoot }, null, 2),
+    "utf8",
+  );
+  const machineClone = stubInstalledRepo(machineRoot, "tool-alpha");
+  const manifestClone = stubInstalledRepo(manifestRoot, "tool-alpha");
+  try {
+    const code = await removeCommand(t.ctx, "tool-alpha", { yes: true });
+    assert.equal(code, 0);
+    assert.equal(existsSync(machineClone), false);
+    assert.equal(existsSync(manifestClone), true);
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});

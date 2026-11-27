@@ -8,6 +8,7 @@ import {
   readBinding,
   writeBinding,
   writeBindingProfile,
+  writeBindingReposPath,
   clearBinding,
   requireBinding,
   BindingError,
@@ -234,6 +235,86 @@ test("writeBindingProfile preserves an existing vcs", () => {
     const w = writeBindingProfile("work", home);
     assert.equal(w.profile, "work");
     assert.equal(w.vcs, "soda");
+  } finally {
+    cleanup();
+    df.cleanup();
+  }
+});
+
+test("readBinding: accepts reposPath and rejects empty reposPath", () => {
+  const f = fresh();
+  try {
+    writeFileSync(bindingPath(f.home), JSON.stringify({ version: 1, dotfilesRepo: "C:/df", reposPath: "D:/src" }));
+    assert.equal(readBinding(f.home)?.reposPath, "D:/src");
+
+    writeFileSync(bindingPath(f.home), JSON.stringify({ version: 1, dotfilesRepo: "C:/df", reposPath: "" }));
+    assert.throws(() => readBinding(f.home), BindingError);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("writeBinding sets, preserves, overrides, and clears reposPath", () => {
+  const { home, cleanup } = fresh();
+  const df1 = makeDotfiles();
+  const df2 = makeDotfiles();
+  try {
+    const first = writeBinding(df1.dir, home, undefined, "D:/code");
+    assert.equal(first.reposPath, "D:/code");
+    assert.equal(readBinding(home)?.reposPath, "D:/code");
+
+    const preserved = writeBinding(df2.dir, home);
+    assert.equal(preserved.dotfilesRepo, df2.dir);
+    assert.equal(preserved.reposPath, "D:/code");
+
+    const overridden = writeBinding(df2.dir, home, undefined, "E:/work");
+    assert.equal(overridden.reposPath, "E:/work");
+
+    const cleared = writeBinding(df2.dir, home, undefined, null);
+    assert.equal(cleared.reposPath, undefined);
+    assert.equal(readBinding(home)?.reposPath, undefined);
+  } finally {
+    cleanup();
+    df1.cleanup();
+    df2.cleanup();
+  }
+});
+
+test("writeBindingProfile preserves an existing reposPath", () => {
+  const { home, cleanup } = fresh();
+  const df = makeDotfiles();
+  try {
+    writeBinding(df.dir, home, "soda", "D:/code");
+    const w = writeBindingProfile("work", home);
+    assert.equal(w.profile, "work");
+    assert.equal(w.vcs, "soda");
+    assert.equal(w.reposPath, "D:/code");
+  } finally {
+    cleanup();
+    df.cleanup();
+  }
+});
+
+test("writeBindingReposPath updates and clears reposPath while preserving other fields", () => {
+  const { home, cleanup } = fresh();
+  const df = makeDotfiles();
+  try {
+    assert.throws(() => writeBindingReposPath("D:/code", home), BindingError);
+
+    writeBinding(df.dir, home, "soda");
+    writeBindingProfile("work", home);
+
+    const updated = writeBindingReposPath("D:/code", home);
+    assert.equal(updated.dotfilesRepo, df.dir);
+    assert.equal(updated.vcs, "soda");
+    assert.equal(updated.profile, "work");
+    assert.equal(updated.reposPath, "D:/code");
+
+    const cleared = writeBindingReposPath(null, home);
+    assert.equal(cleared.dotfilesRepo, df.dir);
+    assert.equal(cleared.vcs, "soda");
+    assert.equal(cleared.profile, "work");
+    assert.equal(cleared.reposPath, undefined);
   } finally {
     cleanup();
     df.cleanup();

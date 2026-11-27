@@ -491,3 +491,31 @@ test("sync: sd-powered dotfiles repo (manifest vcs, no binding vcs) pulls with s
     df.cleanup();
   }
 });
+
+test("sync: clones repos into per-machine binding reposPath over manifest reposPath", async () => {
+  const df = makeDotfilesRepo({
+    version: 1,
+    reposPath: "~/manifest-repos",
+    repos: [{ name: "tool-alpha", url: "https://example.com/me/tool-alpha.git" }],
+  });
+  const t = makeContext({ preBoundTo: df.dir });
+  const machineRoot = join(t.homeDir, "machine-repos");
+  writeFileSync(
+    t.ctx.bindingPath,
+    JSON.stringify({ version: 1, dotfilesRepo: df.dir, reposPath: machineRoot }, null, 2),
+    "utf8",
+  );
+  try {
+    const code = await syncCommand(t.ctx, { yes: true });
+    assert.equal(code, 0);
+    const expectedTarget = join(machineRoot, "tool-alpha");
+    assert.equal(
+      t.runner.calls[1].command,
+      `git clone https://example.com/me/tool-alpha.git "${expectedTarget}"`,
+    );
+    assert.ok(t.log.captured.some((l) => l.includes(`clone target: ${machineRoot} (binding)`)));
+  } finally {
+    t.cleanup();
+    df.cleanup();
+  }
+});

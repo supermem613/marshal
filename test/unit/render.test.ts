@@ -11,6 +11,7 @@ const emptyPlan: Plan = {
   hooks: [],
   setup: [],
   reposPath: "/x",
+  reposPathSource: "default",
   platform: "win32",
   activeProfile: { profile: null, source: "none" },
 };
@@ -48,12 +49,14 @@ test("renderPlan: lists apps + repos", () => {
     }],
     setup: [],
     reposPath: "/r",
+    reposPathSource: "binding",
     platform: "win32",
     activeProfile: { profile: "work", source: "binding" },
   };
   renderPlan(plan, log);
   const text = log.captured.join("\n");
   assert.ok(text.includes("profile: work (binding)"));
+  assert.ok(text.includes("clone target: /r (binding)"));
   assert.ok(text.includes("Git.Git"));
   assert.ok(text.includes("tool-alpha"));
   assert.ok(text.includes("CLONE + INSTALL"));
